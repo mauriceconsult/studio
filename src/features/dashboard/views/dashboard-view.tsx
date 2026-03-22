@@ -4,6 +4,7 @@ import { DashboardHeader } from "@/features/dashboard/components/dashboard-heade
 import { TextInputPanel } from "@/features/dashboard/components/text-input-panel";
 import { QuickActionsPanel } from "@/features/dashboard/components/quick-actions-panel";
 
+
 export function DashboardView() {
   return (
     <div className="relative">
