@@ -4,6 +4,16 @@ import { prisma } from "@/lib/db";
 import { deleteAudio } from "@/lib/r2";
 import { createTRPCRouter, orgProcedure } from "../init";
 
+// ← shared select to avoid duplication
+const voiceSelect = {
+  id: true,
+  name: true,
+  description: true,
+  category: true,
+  language: true,
+  variant: true,
+} as const;
+
 export const voicesRouter = createTRPCRouter({
   getAll: orgProcedure
     .input(
@@ -17,12 +27,7 @@ export const voicesRouter = createTRPCRouter({
       const searchFilter = input?.query
         ? {
             OR: [
-              {
-                name: {
-                  contains: input.query,
-                  mode: "insensitive" as const,
-                },
-              },
+              { name: { contains: input.query, mode: "insensitive" as const } },
               {
                 description: {
                   contains: input.query,
@@ -38,32 +43,20 @@ export const voicesRouter = createTRPCRouter({
           where: {
             variant: "CUSTOM",
             orgId: ctx.orgId,
+            deletedAt: null, // ← soft delete filter
             ...searchFilter,
           },
           orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            category: true,
-            language: true,
-            variant: true,
-          },
+          select: voiceSelect,
         }),
         prisma.voice.findMany({
           where: {
             variant: "SYSTEM",
+            deletedAt: null, // ← soft delete filter
             ...searchFilter,
           },
           orderBy: { name: "asc" },
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            category: true,
-            language: true,
-            variant: true,
-          },
+          select: voiceSelect,
         }),
       ]);
 
@@ -78,6 +71,7 @@ export const voicesRouter = createTRPCRouter({
           id: input.id,
           variant: "CUSTOM",
           orgId: ctx.orgId,
+          deletedAt: null, // ← only delete active voices
         },
         select: { id: true, r2ObjectKey: true },
       });
@@ -89,11 +83,21 @@ export const voicesRouter = createTRPCRouter({
         });
       }
 
-      await prisma.voice.delete({ where: { id: voice.id } });
+      // Soft delete — preserves generation history integrity
+      await prisma.voice.update({
+        where: { id: voice.id },
+        data: { deletedAt: new Date() },
+      });
 
+      // Clean up R2 storage — background job candidate for production
       if (voice.r2ObjectKey) {
-        // In production, consider background jobs, retires, cron jobs etc.
-        await deleteAudio(voice.r2ObjectKey).catch(() => {});
+        await deleteAudio(voice.r2ObjectKey).catch((err) => {
+          console.error("[R2_DELETE_FAILED]", {
+            voiceId: voice.id,
+            key: voice.r2ObjectKey,
+            error: err,
+          });
+        });
       }
 
       return { success: true };

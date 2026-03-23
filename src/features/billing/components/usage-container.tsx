@@ -49,7 +49,7 @@ function UpgradeCard() {
 function UsageCard({ estimatedCostCents }: { estimatedCostCents: number }) {
   const trpc = useTRPC();
   const portalMutation = useMutation(
-    trpc.billing.createPortalSession.mutationOptions({}),
+    trpc.billing.createPortalSession.mutationOptions(), // ← remove {}
   );
 
   const openPortal = useCallback(() => {
@@ -95,7 +95,9 @@ function UsageCard({ estimatedCostCents }: { estimatedCostCents: number }) {
 
 export function UsageContainer() {
   const trpc = useTRPC();
-  const { data } = useQuery(trpc.billing.getStatus.queryOptions());
+  const { data } = useQuery(
+    trpc.billing.getStatus.queryOptions(), // ← remove {} if present
+  );
 
   return (
     <div className="group-data-[collapsible=icon]:hidden bg-background border border-border rounded-lg p-3">

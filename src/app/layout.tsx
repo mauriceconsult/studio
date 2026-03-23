@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { NuqsAdapter } from "nuqs/adapters/next"; // ← correct import path
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
   },
   description: "Create your own voice assistants",
   keywords: ["voice generator", "text to speech", "AI voice", "voice cloning"],
-  authors: [{ name: "Max18tech Limited" }],
+  authors: [{ name: "Maxnovate Limited" }],
   openGraph: {
     title: "Studio",
     description: "Create your own voice assistants",
@@ -40,7 +41,7 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background font-sans`}
         >
-          {children}
+          <NuqsAdapter>{children}</NuqsAdapter>
           <Toaster />
         </body>
       </html>
