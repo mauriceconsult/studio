@@ -44,3 +44,14 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Python
+chatterbox-service/venv/
+chatterbox-service/__pycache__/
+chatterbox-service/*.pyc
+chatterbox-service/*.pyo
+chatterbox-service/.env
+get_started.py
+**/__pycache__/
+*.pyc
+venv/
