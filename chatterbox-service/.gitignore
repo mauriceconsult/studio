@@ -1,0 +1,9 @@
+
+# Python
+chatterbox-service/venv/
+chatterbox-service/__pycache__/
+chatterbox-service/*.pyc
+chatterbox-service/*.pyo
+chatterbox-service/.env
+**/__pycache__/
+*.pyc
