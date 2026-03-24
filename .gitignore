@@ -55,3 +55,6 @@ get_started.py
 **/__pycache__/
 *.pyc
 venv/
+
+_pycache__/
+.vscode/

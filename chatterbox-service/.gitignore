@@ -1,9 +1,12 @@
 
 # Python
 chatterbox-service/venv/
+venv/
+app.py
 chatterbox-service/__pycache__/
 chatterbox-service/*.pyc
 chatterbox-service/*.pyo
 chatterbox-service/.env
 **/__pycache__/
 *.pyc
+requirements.txt
