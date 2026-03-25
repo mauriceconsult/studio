@@ -1,13 +1,13 @@
 """Chatterbox TTS API - Text-to-speech with voice cloning on Modal."""
 
 import modal
-# R2 cloud bucket mount (read-only, replaces Modal Volume)
-R2_BUCKET_NAME = "<bucket-name>"
-R2_ACCOUNT_ID = "<account-id>"
+
+R2_BUCKET_NAME = "studio-app"
+R2_ACCOUNT_ID = "015ff43fe068b1475f54c53e217feddb"
 R2_MOUNT_PATH = "/r2"
 r2_bucket = modal.CloudBucketMount(
     R2_BUCKET_NAME,
-    bucket_endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+    bucket_endpoint_url=f"https://015ff43fe068b1475f54c53e217feddb.r2.cloudflarestorage.com",
     secret=modal.Secret.from_name("cloudflare-r2"),
     read_only=True,
 )
