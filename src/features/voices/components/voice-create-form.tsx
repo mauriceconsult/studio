@@ -216,9 +216,7 @@ function LanguageCombobox({
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0">
         <Command>
           <CommandInput placeholder="Search language..." />
-          <CommandList id={listboxId}>
-            {" "}
-            {/* ← matching id */}
+          <CommandList id={listboxId}>            
             <CommandEmpty>No language found.</CommandEmpty>
             <CommandGroup>
               {LANGUAGE_OPTIONS.map((lang) => (
