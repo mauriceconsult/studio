@@ -13,10 +13,12 @@ export default async function DashboardLayout({
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
 
   return (
-    <TRPCReactProvider>    
+    <TRPCReactProvider>
       <SidebarProvider defaultOpen={defaultOpen} className="h-svh">
         <DashboardSidebar />
-        <SidebarInset className="min-h-0 min-w-0">
+        <SidebarInset className="flex flex-col min-h-0 min-w-0 flex-1">
+          {" "}
+          {/* ← add flex flex-col flex-1 */}
           <main className="flex min-h-0 flex-1 flex-col">{children}</main>
         </SidebarInset>
       </SidebarProvider>
