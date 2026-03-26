@@ -41,7 +41,8 @@ export function QuickActionCard({
           variant="outline"
           size="xs"
           className="w-fit"
-          render={<Link href={href} />} 
+          nativeButton={false}
+          render={<Link href={href} />}
         >
           Try now
           <ArrowRight className="size-3" />

@@ -70,7 +70,7 @@ function NavSection({ label, items, pathname }: NavSectionProps) {
               <SidebarMenuItem key={item.title}>
                 {item.url ? (
                   <SidebarMenuButton
-                    render={<Link href={item.url} />} // ← render instead of asChild
+                    render={<Link href={item.url} />}
                     isActive={isActive}
                     tooltip={item.title}
                     className={menuButtonClass}
@@ -134,7 +134,7 @@ export function DashboardSidebar() {
     },
     {
       title: "Help and support",
-      url: "mailto:business@codewithantonio.com",
+      url: "mailto:business@maxnovate.com",
       icon: Headphones,
     },
   ];
@@ -150,13 +150,13 @@ export function DashboardSidebar() {
           <div className="flex items-center gap-2 pl-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
             <Image
               src="/logo.svg"
-              alt="Resonance"
+              alt="Voice"
               width={24}
               height={24}
               className="rounded-sm"
             />
             <span className="group-data-[collapsible=icon]:hidden font-semibold text-lg tracking-tighter text-foreground">
-              Resonance
+              Voice
             </span>
             <SidebarTrigger className="ml-auto lg:hidden" />
           </div>

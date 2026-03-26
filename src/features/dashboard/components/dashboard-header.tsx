@@ -18,24 +18,26 @@ export function DashboardHeader() {
         </h1>
       </div>
 
-   <div className="lg:flex items-center gap-3 hidden">
-  <Button
-    variant="outline"
-    size="sm"
-    render={<Link href="mailto:maxnovate.com" />}
-  >
-    <ThumbsUp />
-    <span className="hidden lg:block">Feedback</span>
-  </Button>
-  <Button
-    variant="outline"
-    size="sm"
-    render={<Link href="mailto:maxnovate.com" />}
-  >
-    <Headphones />
-    <span className="hidden lg:block">Need help?</span>
-  </Button>
-</div>
+      <div className="lg:flex items-center gap-3 hidden">
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<Link href="mailto:maxnovate.com" />}
+        >
+          <ThumbsUp />
+          <span className="hidden lg:block">Feedback</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<Link href="mailto:maxnovate.com" />}
+        >
+          <Headphones />
+          <span className="hidden lg:block">Need help?</span>
+        </Button>
+      </div>
     </div>
   );
 }

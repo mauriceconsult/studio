@@ -24,10 +24,12 @@ export function PageHeader({
         <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
       </div>
       <div className="flex items-center gap-3">
+   
         <Button
           variant="outline"
           size="sm"
-          render={<Link href="mailto:maxnovate.com" />}
+          nativeButton={false} // ← add this
+          render={<Link href="mailto:business@maxnovate.com" />}
         >
           <ThumbsUp />
           <span className="hidden lg:block">Feedback</span>
@@ -35,7 +37,8 @@ export function PageHeader({
         <Button
           variant="outline"
           size="sm"
-          render={<Link href="mailto:maxnovate.com" />}
+          nativeButton={false} // ← add this
+          render={<Link href="mailto:business@maxnovate.com" />}
         >
           <Headphones />
           <span className="hidden lg:block">Need help?</span>
