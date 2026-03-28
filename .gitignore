@@ -61,3 +61,5 @@ _pycache__/
 
 # Sentry Config File
 .env.sentry-build-plugin
+public/videos/
+public/slides/
