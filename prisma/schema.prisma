@@ -128,3 +128,11 @@ model UsageRecord {
   @@index([orgId])
   @@index([orgId, month, year]) // ← fast monthly usage queries
 }
+model Job {
+  id        String   @id @default(cuid())
+  status    String
+  progress  Int      @default(0)
+  result    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
