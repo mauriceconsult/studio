@@ -136,3 +136,26 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+model MomoPayment {
+  id           String   @id @default(cuid())
+  referenceId  String   @unique   // MTN's UUID for this transaction
+  externalId   String             // your userId or jobId
+  phone        String
+  amount       Int
+  currency     String   @default("UGX")
+  status       String   @default("PENDING") // PENDING | SUCCESSFUL | FAILED | CANCELLED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  plan             String                        // e.g. "pro", "starter"
+  status           String    @default("active")  // active | cancelled | expired
+  momoReferenceId  String?
+  activatedAt      DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}

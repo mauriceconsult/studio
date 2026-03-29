@@ -20,12 +20,21 @@ export const metadata: Metadata = {
     default: "Studio",
     template: "%s | Studio",
   },
-  description: "Create your own voice assistants",
-  keywords: ["voice generator", "text to speech", "AI voice", "voice cloning"],
+  description:
+    "Turn scripts into AI-generated tutorial videos with voice cloning",
+  keywords: [
+    "AI tutorial generator",
+    "text to speech",
+    "voice cloning",
+    "course generator",
+    "AI video",
+    "e-learning",
+  ],
   authors: [{ name: "Maxnovate Limited" }],
   openGraph: {
     title: "Studio",
-    description: "Create your own voice assistants",
+    description:
+      "Turn scripts into AI-generated tutorial videos with voice cloning",
     type: "website",
   },
 };

@@ -48,7 +48,7 @@ export async function runCourseJob(jobId: string, script: string) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     updateJob(jobId, {
       status: "error",
-      error: errorMessage,
+      result: errorMessage,
     });
   }
 }
