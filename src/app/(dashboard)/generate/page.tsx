@@ -9,7 +9,6 @@ interface Job {
 
 export default function GeneratePage() {
   const [script, setScript] = useState("");
-  // const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -27,8 +26,6 @@ export default function GeneratePage() {
 
     const { jobId } = await res.json();
     // setJobId(jobId);
-    
-
     poll(jobId);
   }
 

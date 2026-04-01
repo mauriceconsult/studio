@@ -21,7 +21,7 @@ const PLANS: Record<Plan, PlanConfig> = {
     priceUSD: "~$13",
     description: "For individuals getting started",
     features: [
-      "5 course generations/month",
+      "5 tutorial generations/month",
       "Standard voice cloning",
       "1 GB storage",
       "Community support",
@@ -33,7 +33,7 @@ const PLANS: Record<Plan, PlanConfig> = {
     priceUSD: "~$32",
     description: "For creators and educators",
     features: [
-      "Unlimited course generations",
+      "Unlimited tutorial generations",
       "Priority voice cloning",
       "10 GB storage",
       "Priority queue",

@@ -5,32 +5,26 @@ export async function POST(req: Request) {
 
   const job = await createJob();
 
-  // 🔥 run async WITHOUT blocking response
+  // run async WITHOUT blocking response
   runJob(job.id, script);
 
   return Response.json({ jobId: job.id });
 }
 
 async function runJob(jobId: string, script: string) {
+  void script; // acknowledged – reserved for future pipeline use
   try {
-    // simulate steps (replace with your real pipeline)
     for (let i = 1; i <= 5; i++) {
       await new Promise((r) => setTimeout(r, 1000));
-
-      await updateJob(jobId, {
-        progress: i * 20,
-      });
+      await updateJob(jobId, { progress: i * 20 });
     }
 
-    // final result (replace with real video URL)
     await updateJob(jobId, {
       status: "done",
       progress: 100,
       result: "/sample-video.mp4",
     });
-  } catch (err) {
-    await updateJob(jobId, {
-      status: "error",
-    });
+  } catch {
+    await updateJob(jobId, { status: "error" });
   }
 }
