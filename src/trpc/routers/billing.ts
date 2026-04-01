@@ -1,9 +1,14 @@
 /**
- * server/routers/billing.ts
+ * src/trpc/routers/billing.ts
  *
  * Dual-market billing router.
  * - International users  → Polar (card / Stripe checkout + meters)
  * - Ugandan users        → MoMo (MTN Mobile Money + local credit ledger)
+ *
+ * Polar product: "Studio Pro" — single product, three meters:
+ *   POLAR_METER_TTS_GENERATION      → characters_synthesized
+ *   POLAR_METER_VOICE_CREATION      → voices_cloned
+ *   POLAR_METER_COURSE_GENERATION   → videos_generated
  *
  * Market is derived from Clerk publicMetadata.country set at signup.
  */
@@ -12,39 +17,40 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { polar } from "@/lib/polar";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { createTRPCRouter, orgProcedure } from "../init";
 import {
   deriveMarket,
   OVERAGE_PRICES,
-  PLAN_INCLUDED,
   type Market,
   type MeterEvent,
-  type PlanId,
 } from "@/lib/billing/market";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getOrgMarket(orgId: string): Promise<Market> {
-  // Clerk org metadata: publicMetadata.country set at signup
-  const org = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+  const client = await clerkClient();
+  const org = await client.organizations.getOrganization({ organizationId: orgId });
   const country = (org.publicMetadata?.country as string) ?? null;
   return deriveMarket(country);
 }
 
-const POLAR_PRODUCT_IDS: Record<PlanId, string> = {
-  starter: env.POLAR_STARTER_PRODUCT_ID,
-  pro:     env.POLAR_PRO_PRODUCT_ID,
+// Maps internal MeterEvent names → Polar meter slugs from env
+const POLAR_METER_MAP: Record<MeterEvent, string> = {
+  characters_synthesized: env.POLAR_METER_TTS_GENERATION,
+  voices_cloned:          env.POLAR_METER_VOICE_CREATION,
+  videos_generated:       env.POLAR_METER_COURSE_GENERATION,
 };
 
-function aggregatePolarMeters(activeSubscriptions: any[]): number {
+interface PolarMeter     { amount?: number | null }
+interface PolarActiveSub { productId?: string | null; meters?: PolarMeter[] | null }
+
+function aggregatePolarMeters(subs: PolarActiveSub[]): number {
   let cents = 0;
-  for (const sub of activeSubscriptions ?? []) {
-    for (const meter of sub.meters ?? []) {
+  for (const sub of subs)
+    for (const meter of sub.meters ?? [])
       cents += meter.amount ?? 0;
-    }
-  }
   return cents;
 }
 
@@ -53,7 +59,8 @@ function aggregatePolarMeters(activeSubscriptions: any[]): number {
 export const billingRouter = createTRPCRouter({
 
   // ── getMarket ──────────────────────────────────────────────────────────────
-  // Let the client know which payment rail this org uses.
+  // Tells the client which payment rail this org uses so it renders
+  // the correct billing UI without exposing server logic.
 
   getMarket: orgProcedure.query(async ({ ctx }) => {
     const market = await getOrgMarket(ctx.orgId);
@@ -61,97 +68,90 @@ export const billingRouter = createTRPCRouter({
   }),
 
   // ── getStatus ──────────────────────────────────────────────────────────────
-  // Unified subscription status across both markets.
+  // Unified subscription + credit state across both markets.
 
   getStatus: orgProcedure.query(async ({ ctx }) => {
     const market = await getOrgMarket(ctx.orgId);
 
     if (market === "ug") {
-      const sub = await db.momoSubscription.findFirst({
-        where: { orgId: ctx.orgId, status: "active" },
+      const sub = await prisma.momoSubscription.findFirst({
+        where:   { orgId: ctx.orgId, status: "active" },
         include: { credits: true },
       });
 
       return {
-        market: "ug" as const,
+        market:                "ug" as const,
         hasActiveSubscription: !!sub && new Date(sub.expiresAt) > new Date(),
-        plan: sub?.plan ?? null,
-        credits: sub?.credits ?? null,
-        estimatedCostCents: null, // not applicable for MoMo flat plans
-        customerId: null,
+        plan:                  sub?.plan ?? null,
+        credits:               sub?.credits ?? null,
+        estimatedCostCents:    null,
+        customerId:            null,
       };
     }
 
     // Global — Polar
     try {
-      const customerState = await polar.customers.getStateExternal({
-        externalId: ctx.orgId,
-      });
-
-      const activeSubs = customerState.activeSubscriptions ?? [];
-      const hasActiveSubscription = activeSubs.length > 0;
-      const plan = (activeSubs[0]?.product?.name?.toLowerCase() ?? null) as PlanId | null;
+      const state      = await polar.customers.getStateExternal({ externalId: ctx.orgId });
+      const activeSubs = (state.activeSubscriptions ?? []) as PolarActiveSub[];
 
       return {
-        market: "global" as const,
-        hasActiveSubscription,
-        plan,
-        credits: null, // Polar manages this natively
-        estimatedCostCents: aggregatePolarMeters(activeSubs),
-        customerId: customerState.id,
+        market:                "global" as const,
+        hasActiveSubscription: activeSubs.length > 0,
+        plan:                  null, // single product — no tier distinction in Polar
+        credits:               null,
+        estimatedCostCents:    aggregatePolarMeters(activeSubs),
+        customerId:            state.id,
       };
     } catch {
       return {
-        market: "global" as const,
+        market:                "global" as const,
         hasActiveSubscription: false,
-        plan: null,
-        credits: null,
-        estimatedCostCents: 0,
-        customerId: null,
+        plan:                  null,
+        credits:               null,
+        estimatedCostCents:    0,
+        customerId:            null,
       };
     }
   }),
 
   // ── createCheckout ─────────────────────────────────────────────────────────
-  // Global only — initiates Polar hosted checkout.
+  // Global only — initiates Polar hosted checkout for Studio Pro.
 
-  createCheckout: orgProcedure
-    .input(z.object({ plan: z.enum(["starter", "pro"]) }))
-    .mutation(async ({ ctx, input }) => {
-      const market = await getOrgMarket(ctx.orgId);
+  createCheckout: orgProcedure.mutation(async ({ ctx }) => {
+    const market = await getOrgMarket(ctx.orgId);
 
-      if (market === "ug") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Ugandan accounts use MoMo. Use initiateMomoPlan instead.",
-        });
-      }
-
-      const result = await polar.checkouts.create({
-        products: [POLAR_PRODUCT_IDS[input.plan]],
-        externalCustomerId: ctx.orgId,
-        successUrl: `${env.APP_URL}/billing/success?session={CHECKOUT_SESSION_ID}&plan=${input.plan}`,
+    if (market === "ug") {
+      throw new TRPCError({
+        code:    "BAD_REQUEST",
+        message: "Ugandan accounts use MoMo. Use initiateMomoPlan instead.",
       });
+    }
 
-      if (!result.url) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create checkout session",
-        });
-      }
+    const result = await polar.checkouts.create({
+      products:           [env.POLAR_PRODUCT_ID],
+      externalCustomerId: ctx.orgId,
+      successUrl:         `${env.APP_URL}/billing/success?session={CHECKOUT_SESSION_ID}`,
+    });
 
-      return { checkoutUrl: result.url };
-    }),
+    if (!result.url) {
+      throw new TRPCError({
+        code:    "INTERNAL_SERVER_ERROR",
+        message: "Failed to create checkout session",
+      });
+    }
+
+    return { checkoutUrl: result.url };
+  }),
 
   // ── createPortalSession ────────────────────────────────────────────────────
-  // Global only — Polar customer portal for managing subscription.
+  // Global only — Polar customer portal for managing subscription and invoices.
 
   createPortalSession: orgProcedure.mutation(async ({ ctx }) => {
     const market = await getOrgMarket(ctx.orgId);
 
     if (market === "ug") {
       throw new TRPCError({
-        code: "BAD_REQUEST",
+        code:    "BAD_REQUEST",
         message: "MoMo accounts manage billing via the in-app billing page.",
       });
     }
@@ -162,7 +162,7 @@ export const billingRouter = createTRPCRouter({
 
     if (!result.customerPortalUrl) {
       throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
+        code:    "INTERNAL_SERVER_ERROR",
         message: "Failed to create customer portal session",
       });
     }
@@ -172,8 +172,7 @@ export const billingRouter = createTRPCRouter({
 
   // ── initiateMomoPlan ───────────────────────────────────────────────────────
   // UG only — kicks off MTN MoMo Request to Pay for a plan subscription.
-  // Actual payment confirmation is handled by the /api/webhooks/momo route,
-  // which activates the subscription in DB on SUCCESSFUL status.
+  // Subscription is activated in DB by /api/webhooks/momo on SUCCESSFUL status.
 
   initiateMomoPlan: orgProcedure
     .input(z.object({
@@ -185,37 +184,32 @@ export const billingRouter = createTRPCRouter({
 
       if (market !== "ug") {
         throw new TRPCError({
-          code: "BAD_REQUEST",
+          code:    "BAD_REQUEST",
           message: "International accounts use card checkout.",
         });
       }
 
-      const res = await fetch(`${env.APP_URL}/api/momo-pay`, {
-        method: "POST",
+      const res = await fetch(`${env.PLATFORM_API_URL}/api/momo-pay`, {
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: ctx.orgId,
-          phone: input.phone,
-          plan:  input.plan,
-        }),
+        body:    JSON.stringify({ orgId: ctx.orgId, phone: input.phone, plan: input.plan }),
       });
 
       if (!res.ok) {
-        const { error } = await res.json();
+        const { error } = await res.json() as { error?: string };
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
+          code:    "INTERNAL_SERVER_ERROR",
           message: error ?? "MoMo payment initiation failed",
         });
       }
 
-      const { referenceId } = await res.json();
+      const { referenceId } = await res.json() as { referenceId: string };
       return { referenceId };
     }),
 
   // ── initiateMomoTopUp ──────────────────────────────────────────────────────
-  // UG only — inline PAYG top-up when a user runs out of credits mid-generation.
-  // After successful MoMo payment, the webhook credits the ledger and
-  // resumes the paused job (if jobId is provided).
+  // UG only — inline PAYG top-up when credits run out mid-generation.
+  // Webhook credits the ledger and resumes the paused job on SUCCESSFUL.
 
   initiateMomoTopUp: orgProcedure
     .input(z.object({
@@ -228,108 +222,110 @@ export const billingRouter = createTRPCRouter({
       const market = await getOrgMarket(ctx.orgId);
 
       if (market !== "ug") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Top-up is for MoMo accounts only." });
+        throw new TRPCError({
+          code:    "BAD_REQUEST",
+          message: "Top-up is for MoMo accounts only.",
+        });
       }
 
       const unitPrice = OVERAGE_PRICES[input.meter].ugx;
       const totalUgx  = unitPrice * input.quantity;
 
-      // Record top-up request before initiating payment
-      const topUp = await db.momoTopUp.create({
+      const topUp = await prisma.momoTopUp.create({
         data: {
-          orgId:      ctx.orgId,
-          phone:      input.phone,
-          amountUgx:  totalUgx,
-          meter:      input.meter,
-          quantity:   input.quantity,
-          jobId:      input.jobId,
-          status:     "pending",
-        },
-      });
-
-      const res = await fetch(`${env.APP_URL}/api/momo-pay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
           orgId:     ctx.orgId,
           phone:     input.phone,
           amountUgx: totalUgx,
-          topUpId:   topUp.id,   // webhook uses this to credit the right ledger
+          meter:     input.meter,
+          quantity:  input.quantity,
+          jobId:     input.jobId,
+          status:    "pending",
+        },
+      });
+
+      const res = await fetch(`${env.PLATFORM_API_URL}/api/momo-pay`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          orgId:     ctx.orgId,
+          phone:     input.phone,
+          amountUgx: totalUgx,
+          topUpId:   topUp.id,
         }),
       });
 
       if (!res.ok) {
-        const { error } = await res.json();
+        const { error } = await res.json() as { error?: string };
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
+          code:    "INTERNAL_SERVER_ERROR",
           message: error ?? "MoMo top-up initiation failed",
         });
       }
 
-      const { referenceId } = await res.json();
+      const { referenceId } = await res.json() as { referenceId: string };
 
-      await db.momoTopUp.update({
+      await prisma.momoTopUp.update({
         where: { id: topUp.id },
         data:  { referenceId },
       });
 
       return {
         referenceId,
-        topUpId:   topUp.id,
+        topUpId:  topUp.id,
         totalUgx,
         unitPrice,
-        meter:     input.meter,
-        quantity:  input.quantity,
+        meter:    input.meter,
+        quantity: input.quantity,
       };
     }),
 
   // ── ingestMeterEvent ───────────────────────────────────────────────────────
-  // Fires a usage meter event.
-  // - Global: reports to Polar
-  // - UG: deducts from local MomoCredits ledger; returns whether credits remain
-  //   so the caller (worker) knows whether to pause and prompt top-up.
+  // Fires a usage event after each billable action completes.
+  // Global → reports to Polar via events.ingest using POLAR_METER_MAP slugs
+  // UG     → deducts from MomoCredits ledger; signals needsTopUp to the worker
 
   ingestMeterEvent: orgProcedure
     .input(z.object({
       event:    z.enum(["videos_generated", "characters_synthesized", "voices_cloned"]),
       quantity: z.number().positive(),
-      metadata: z.record(z.string()).optional(),
+      metadata: z.record(z.string(), z.string()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const market = await getOrgMarket(ctx.orgId);
 
       if (market === "global") {
-        await polar.ingestion.ingest({
-          events: [{
-            name:               input.event,
-            externalCustomerId: ctx.orgId,
-            metadata:           input.metadata,
-          }],
-        });
+        await polar.events.ingest(
+          {
+            events: [{
+              name:               POLAR_METER_MAP[input.event],
+              externalCustomerId: ctx.orgId,
+              metadata:           input.metadata ?? {},
+            }],
+          },
+          {},
+        );
         return { creditsRemaining: null, needsTopUp: false };
       }
 
       // UG — deduct from local ledger
-      const credits = await db.momoCredits.findUnique({
-        where: { orgId: ctx.orgId },
-      });
+      const credits = await prisma.momoCredits.findUnique({ where: { orgId: ctx.orgId } });
 
       if (!credits) {
         return { creditsRemaining: 0, needsTopUp: true };
       }
 
-      const fieldMap: Record<MeterEvent, keyof typeof credits> = {
+      const fieldMap: Record<MeterEvent, "videosRemaining" | "charsRemaining" | "voicesRemaining"> = {
         videos_generated:       "videosRemaining",
         characters_synthesized: "charsRemaining",
         voices_cloned:          "voicesRemaining",
       };
 
-      const field = fieldMap[input.event];
-      const current = credits[field] as number;
+      const field      = fieldMap[input.event];
+      const current    = credits[field];
       const needsTopUp = current < input.quantity;
 
       if (!needsTopUp) {
-        await db.momoCredits.update({
+        await prisma.momoCredits.update({
           where: { orgId: ctx.orgId },
           data:  { [field]: { decrement: input.quantity } },
         });
@@ -338,17 +334,16 @@ export const billingRouter = createTRPCRouter({
       return {
         creditsRemaining: Math.max(0, current - input.quantity),
         needsTopUp,
-        meter: input.event,
+        meter:     input.event,
         shortfall: needsTopUp ? input.quantity - current : 0,
       };
     }),
 
   // ── getOveragePrices ───────────────────────────────────────────────────────
-  // Returns PAYG unit prices for the client to display in top-up prompts.
+  // Returns per-unit PAYG prices for the client to display in top-up prompts.
 
   getOveragePrices: orgProcedure.query(async ({ ctx }) => {
     const market = await getOrgMarket(ctx.orgId);
     return { market, prices: OVERAGE_PRICES };
   }),
-
 });

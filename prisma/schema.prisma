@@ -136,4 +136,62 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+// prisma/schema.prisma (billing additions only — merge with your existing schema)
+
+// ─── MoMo Subscription ────────────────────────────────────────────────────────
+// Tracks active plans for Ugandan users paid via MTN MoMo.
+// International users are tracked entirely in Polar; this table is MoMo-only.
+
+model MomoSubscription {
+  id          String   @id @default(cuid())
+  orgId       String   @unique
+  plan        String   // "starter" | "pro"
+  status      String   // "active" | "expired" | "cancelled"
+  phone       String
+  referenceId String   // MoMo transaction reference
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  credits     MomoCredits?
+}
+
+// ─── MoMo Credit Ledger ───────────────────────────────────────────────────────
+// Tracks remaining included units and PAYG top-up balance for MoMo users.
+// Polar handles this natively via meters; we replicate the concept for MoMo.
+
+model MomoCredits {
+  id                     String   @id @default(cuid())
+  orgId                  String   @unique
+  subscriptionId         String   @unique
+
+  // Included plan units (reset monthly)
+  videosRemaining        Int      @default(0)
+  charsRemaining         Int      @default(0)
+  voicesRemaining        Int      @default(0)
+
+  // PAYG top-up balance in UGX (carried over, never expires)
+  topUpBalanceUgx        Int      @default(0)
+
+  updatedAt              DateTime @updatedAt
+
+  subscription           MomoSubscription @relation(fields: [subscriptionId], references: [id])
+}
+
+// ─── MoMo Top-Up Requests ────────────────────────────────────────────────────
+// Tracks inline PAYG top-up payments initiated mid-generation.
+
+model MomoTopUp {
+  id          String   @id @default(cuid())
+  orgId       String
+  phone       String
+  amountUgx   Int
+  meter       String   // "videos_generated" | "characters_synthesized" | "voices_cloned"
+  quantity    Int      // units being topped up
+  referenceId String?  // MoMo transaction reference (set after initiation)
+  status      String   @default("pending") // "pending" | "successful" | "failed"
+  jobId       String?  // if top-up is tied to a paused job
+  createdAt   DateTime @default(now())
+}
+
 
