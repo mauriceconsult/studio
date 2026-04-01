@@ -166,7 +166,7 @@ model MomoCredits {
   subscriptionId         String   @unique
 
   // Included plan units (reset monthly)
-  videosRemaining        Int      @default(0)
+  minutesRemaining  Int  @default(0)
   charsRemaining         Int      @default(0)
   voicesRemaining        Int      @default(0)
 

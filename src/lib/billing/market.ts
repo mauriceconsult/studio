@@ -9,36 +9,57 @@
 export type Market = "ug" | "global";
 
 export type MeterEvent =
-  | "videos_generated"
+  | "video_minutes"
   | "characters_synthesized"
   | "voices_cloned";
 
 export type PlanId = "starter" | "pro";
 
-/** Resolved from Clerk publicMetadata.country at signup */
+/** Resolve market */
 export function deriveMarket(country: string | null | undefined): Market {
-  const UG_COUNTRIES = ["UG"]; // extend for KE, TZ, RW when ready
+  const UG_COUNTRIES = ["UG"];
   if (!country) return "global";
   return UG_COUNTRIES.includes(country.toUpperCase()) ? "ug" : "global";
 }
 
-/** Per-unit PAYG overage prices (USD cents for Polar, UGX for MoMo display) */
-export const OVERAGE_PRICES: Record<MeterEvent, { usdCents: number; ugx: number; label: string }> = {
-  videos_generated:      { usdCents: 225, ugx: 8_300,  label: "per tutorial"         },
-  characters_synthesized:{ usdCents: 30,  ugx: 110,    label: "per 1,000 characters"  },
-  voices_cloned:         { usdCents: 150, ugx: 5_500,  label: "per cloned voice"      },
+/** Unified pricing model (per unit) */
+export const OVERAGE_PRICES: Record<
+  MeterEvent,
+  { usdCents: number; ugx: number; unit: string; label: string }
+> = {
+  video_minutes: {
+    usdCents: 120, // $1.20 per minute (safe margin baseline)
+    ugx: 4_400,
+    unit: "minute",
+    label: "per video minute",
+  },
+
+  characters_synthesized: {
+    usdCents: 30,
+    ugx: 110,
+    unit: "1k_chars",
+    label: "per 1,000 characters",
+  },
+
+  voices_cloned: {
+    usdCents: 250, // increased from 150 → safer
+    ugx: 9_200,
+    unit: "voice",
+    label: "per cloned voice",
+  },
 };
 
-/** Included units per plan (before PAYG kicks in) */
+/** Plan limits (NO hard infinity) */
 export const PLAN_INCLUDED: Record<PlanId, Record<MeterEvent, number>> = {
   starter: {
-    videos_generated:       8,
-    characters_synthesized: 100_000, // ~100k chars
-    voices_cloned:          1,
+    video_minutes: 20, // ~6–10 short videos
+    characters_synthesized: 100_000,
+    voices_cloned: 1,
   },
+
   pro: {
-    videos_generated:       Infinity,
-    characters_synthesized: Infinity,
-    voices_cloned:          5,
+    video_minutes: 300, // ~5 hours content
+    characters_synthesized: 1_000_000,
+    voices_cloned: 5,
   },
 };

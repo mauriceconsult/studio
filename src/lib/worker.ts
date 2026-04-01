@@ -1,17 +1,47 @@
 import path from "path";
 import { mkdir, writeFile } from "fs/promises";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { generateTTS } from "@/lib/tts";
 import { composeVideo } from "@/lib/ffmpeg";
 import { splitScript, toSRT } from "@/lib/segment";
 import { updateJob } from "./job";
 import { debit, hasAccess } from "@/lib/platform";
 
-const OUT_DIR = path.join(process.cwd(), "public", "videos");
+const OUT_DIR       = path.join(process.cwd(), "public", "videos");
+const execFileAsync = promisify(execFile);
+
+// ─── Video duration via ffprobe ───────────────────────────────────────────────
+
+/**
+ * Returns the duration of a video file in whole minutes (ceiling).
+ * Requires ffprobe to be available in PATH (bundled with ffmpeg).
+ * Falls back to 1 minute if ffprobe fails — never bills zero.
+ */
+async function getVideoMinutes(videoPath: string): Promise<number> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      videoPath,
+    ]);
+    const seconds = parseFloat(stdout.trim());
+    if (!isNaN(seconds) && seconds > 0) {
+      return Math.ceil(seconds / 60); // always ceil — never under-bill
+    }
+  } catch {
+    // ffprobe unavailable or file unreadable — bill 1 minute as safe fallback
+  }
+  return 1;
+}
+
+// ─── Main job runner ──────────────────────────────────────────────────────────
 
 export async function runCourseJob(
-  jobId: string,
+  jobId:  string,
   script: string,
-  userId: string,        // ← now required
+  userId: string,
 ) {
   try {
     // 0. Guard — ensure output directory exists
@@ -50,45 +80,48 @@ export async function runCourseJob(
     await updateJob(jobId, { progress: 65 });
 
     // 5. Video composition
-    await composeVideo({
-      audioPath,
-      imagePaths,
-      srtPath,
-      outputPath: videoPath,
-    });
-    await updateJob(jobId, { progress: 90 });
+    await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
+    await updateJob(jobId, { progress: 85 });
 
-    // 6. Debit credits only after successful completion
+    // 6. Measure actual video duration — must happen after composition
+    const videoMinutes = await getVideoMinutes(videoPath);
+
+    // 7. Debit credits only after successful completion — two separate events:
+    //    a) TTS characters consumed
     await debit({
       userId,
-      app: "studio",
-      eventType: "tts_generation",
-      amount: scriptCreditCost(script),
-      meta: { jobId },
+      app:       "studio",
+      eventType: "characters_synthesized",
+      amount:    ttsCreditCost(script),
+      meta:      { jobId },
+    });
+
+    //    b) Video minutes rendered — this is the variable cost unit
+    await debit({
+      userId,
+      app:       "studio",
+      eventType: "video_minutes",
+      amount:    videoMinutes,
+      meta:      { jobId, videoMinutes: String(videoMinutes) },
     });
 
     await updateJob(jobId, {
-      status: "done",
+      status:   "done",
       progress: 100,
-      result: `/videos/${jobId}.mp4`,
+      result:   `/videos/${jobId}.mp4`,
     });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    await updateJob(jobId, {
-      status: "error",
-      result: errorMessage,
-    });
+    await updateJob(jobId, { status: "error", result: errorMessage });
   }
 }
 
-// =============================================================================
-// Helpers
-// =============================================================================
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Calculate credit cost from script length.
- * Mirrors the TTS pricing: 10 credits per 1,000 characters.
+ * TTS credit cost by character count.
+ * 10 credits per 1,000 characters — mirrors OVERAGE_PRICES.characters_synthesized.
  */
-function scriptCreditCost(script: string): number {
+function ttsCreditCost(script: string): number {
   return Math.ceil((script.length / 1000) * 10);
 }

@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     });
 
     const fieldMap: Record<MeterEvent, string> = {
-      videos_generated: "videosRemaining",
+      video_minutes: "minutesRemaining",
       characters_synthesized: "charsRemaining",
       voices_cloned: "voicesRemaining",
     };
@@ -100,10 +100,10 @@ export async function POST(req: Request) {
     await prisma.momoCredits.upsert({
       where: { orgId: sub.orgId },
       update: {
-        videosRemaining:
-          included.videos_generated === Infinity
+        minutesRemaining:
+          included.video_minutes === Infinity
             ? 999_999
-            : included.videos_generated,
+            : included.video_minutes,
         charsRemaining:
           included.characters_synthesized === Infinity
             ? 999_999_999
@@ -116,10 +116,10 @@ export async function POST(req: Request) {
       create: {
         orgId: sub.orgId,
         subscriptionId: sub.id,
-        videosRemaining:
-          included.videos_generated === Infinity
+        minutesRemaining:
+          included.video_minutes === Infinity
             ? 999_999
-            : included.videos_generated,
+            : included.video_minutes,
         charsRemaining:
           included.characters_synthesized === Infinity
             ? 999_999_999
