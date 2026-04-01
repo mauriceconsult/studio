@@ -326,19 +326,21 @@ export const billingRouter = createTRPCRouter({
 
       // 🔴 GLOBAL (Polar)
       if (market === "global") {
-        await polar.events.ingest({
-          events: [
-            {
-              name: POLAR_METER_MAP[input.event],
-              externalCustomerId: ctx.orgId,
-              metadata: {
-                ...input.metadata,
-                quantity: String(input.quantity),
-                estimatedCostCents: String(estimatedCostCents),
-              },
-            },
-          ],
-        });
+       await polar.events.ingest(
+         {
+           events: [
+             {
+               name: POLAR_METER_MAP[input.event],
+               externalCustomerId: ctx.orgId,
+               metadata: {
+                 ...input.metadata,
+                 value: String(input.quantity), // property Polar sums — confirm name in dashboard
+               },
+             },
+           ],
+         },
+         {},
+       );
 
         return {
           creditsRemaining: null,
