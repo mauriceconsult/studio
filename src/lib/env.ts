@@ -21,6 +21,7 @@ export const env = createEnv({
     PLATFORM_API_KEY: z.string().min(1),
     INSTASKUL_URL: z.string().min(1),
     CLERK_SECRET_KEY: z.string().min(1),
+    CLERK_PUBLISHABLE_KEY: z.string().min(1), 
   },
   experimental__runtimeEnv: {},
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
