@@ -1,82 +1,88 @@
 "use client";
 
+// import {
+//   COST_PER_UNIT,
+//   TEXT_MAX_LENGTH,
+// } from "@/features/text-to-speech/data/constants";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Coins } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 
-import {
-  COST_PER_UNIT,
-  TEXT_MAX_LENGTH,
-} from "@/features/text-to-speech/data/constants";
+type Mode = "speech" | "voice-clone" | "course" | "video";
+
+const modes: { key: Mode; label: string }[] = [
+  { key: "speech", label: "Speech" },
+  { key: "voice-clone", label: "Voice clone" },
+  { key: "course", label: "Course" },
+  { key: "video", label: "Video" },
+];
+
+const placeholders: Record<Mode, string> = {
+  "speech": "Paste a script to convert to speech…",
+  "voice-clone": "Describe the voice style or paste a sample transcript…",
+  "course": "Paste a course outline or tutorial script…",
+  "video": "Paste a script to render as a narrated video…",
+};
+
+const routes: Record<Mode, string> = {
+  "speech": "/generate/speech",
+  "voice-clone": "/generate/voice-clone",
+  "course": "/generate/course",
+  "video": "/generate/video",
+};
 
 export function TextInputPanel() {
-  const [text, setText] = useState("");
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("speech");
+  const [script, setScript] = useState("");
 
-  const handleGenerate = () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    router.push(`/text-to-speech?text=${encodeURIComponent(trimmed)}`);
-  };
+  function handleGenerate() {
+    if (!script.trim()) return;
+    const params = new URLSearchParams({ script });
+    router.push(`${routes[mode]}?${params.toString()}`);
+  }
 
   return (
-    <div
-      className="
-      rounded-[22px] bg-linear-185 from-[#ff8ee3] from-15% via-[#57d7e0] via-39% to-[#dbf1f2] to-85% p-0.5 shadow-[0_0_0_4px_white]
-    "
-    >
-      {/* Using px values for border-radius to ensure proper gradient border math (outer - padding = inner). */}
-      {/* Standard classes like rounded-4xl use CSS calc() which doesn't align cleanly at corners. */}
-      <div className="rounded-4xl bg-[#F9F9F9] p-1">
-        <div className="space-y-4 rounded-2xl bg-white p-4 drop-shadow-xs">
-          <Textarea
-            placeholder="Start typing or paste your text here..."
-            className="min-h-35 resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            maxLength={TEXT_MAX_LENGTH}
-          />
+    <div className="space-y-2">
+      <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+        Create
+      </p>
 
-          {/* Bottom info */}
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+        <textarea
+          className="w-full bg-transparent border-none outline-none resize-none text-sm text-foreground placeholder:text-muted-foreground min-h-20 leading-relaxed"
+          placeholder={placeholders[mode]}
+          value={script}
+          onChange={(e) => setScript(e.target.value)}
+        />
 
-          <div className="flex items-center justify-between">
-            <Badge variant="outline" className="gap-1.5 border-dashed">
-              <Coins className="size-3 text-chart-5" />
-              <span className="text-xs">
-                {text.length === 0 ? (
-                  "Start typing to estimate"
-                ) : (
-                  <>
-                    <span className="tabular-nums">
-                      ${(text.length * COST_PER_UNIT).toFixed(4)}
-                    </span>{" "}
-                    estimated
-                  </>
-                )}
-              </span>
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {text.length.toLocaleString()} /{" "}
-              {TEXT_MAX_LENGTH.toLocaleString()} characters
-            </span>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* Mode tabs */}
+          <div className="flex gap-1.5 flex-wrap">
+            {modes.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setMode(m.key)}
+                className={[
+                  "text-xs px-3 py-1.5 rounded-md border transition-colors",
+                  mode === m.key
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted",
+                ].join(" ")}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
-        </div>
 
-        {/* Action bar */}
-
-        <div className="flex items-center justify-end p-3">
-          <Button
-            size="sm"
-            disabled={!text.trim()}
+          {/* Generate button */}
+          <button
             onClick={handleGenerate}
-            className="w-full lg:w-auto"
+            disabled={!script.trim()}
+            className="text-sm font-medium px-4 py-1.5 rounded-md bg-foreground text-background disabled:opacity-35 disabled:cursor-not-allowed hover:opacity-80 transition-opacity"
           >
-            Generate speech
-          </Button>
+            Generate
+          </button>
         </div>
       </div>
     </div>
