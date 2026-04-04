@@ -1,105 +1,83 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
-type JobStatus = "done" | "processing" | "error" | "draft";
-
-interface RecentJob {
-  id: string;
-  name: string;
-  type: "speech" | "voice-clone" | "course" | "video" | "draft";
-  status: JobStatus;
-  progress?: number;
-  result?: string;
-  createdAt: string;
-}
-
-const TYPE_META: Record<RecentJob["type"], { icon: string; accent: string }> = {
-  speech:       { icon: "🔊", accent: "bg-emerald-50" },
-  "voice-clone":{ icon: "🎙", accent: "bg-blue-50" },
-  course:       { icon: "📚", accent: "bg-amber-50" },
-  video:        { icon: "🎬", accent: "bg-pink-50" },
-  draft:        { icon: "📝", accent: "bg-muted" },
-};
+type JobStatus = "done" | "processing" | "pending" | "error";
 
 const STATUS_STYLES: Record<JobStatus, string> = {
   done:       "bg-emerald-50 text-emerald-800",
   processing: "bg-amber-50 text-amber-800",
+  pending:    "bg-amber-50 text-amber-800",
   error:      "bg-red-50 text-red-700",
-  draft:      "bg-muted text-muted-foreground",
 };
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   done:       "Done",
   processing: "Processing",
+  pending:    "Pending",
   error:      "Error",
-  draft:      "Draft",
 };
 
-// Replace with your real data-fetching hook or SWR/React Query call.
-// Return [] until you wire up a real /api/jobs endpoint.
-function useRecentJobs(): RecentJob[] {
-  return [];
-}
-
-// Polls in-progress jobs and updates their status/progress in state.
-function useJobPoller(
-  jobs: RecentJob[],
-  setJobs: React.Dispatch<React.SetStateAction<RecentJob[]>>
-) {
-  const pollKey = jobs.map((j) => j.id + j.status).join(",");
-
-  useEffect(() => {
-    const processing = jobs.filter((j) => j.status === "processing");
-    if (processing.length === 0) return;
-
-    const intervals = processing.map((job) =>
-      setInterval(async () => {
-        try {
-          const res = await fetch(`/api/job-status?id=${job.id}`);
-
-          // Non-2xx response — mark as error, stop polling
-          if (!res.ok) {
-            setJobs((prev) =>
-              prev.map((j) => (j.id === job.id ? { ...j, status: "error" } : j))
-            );
-            return;
-          }
-
-          const data: Partial<RecentJob> | null = await res.json();
-
-          // Null body — job not found, stop polling silently
-          if (!data) return;
-
-          setJobs((prev) =>
-            prev.map((j) =>
-              j.id === job.id
-                ? {
-                    ...j,
-                    status: data.status ?? j.status,
-                    progress: data.progress ?? j.progress,
-                    result: data.result ?? j.result,
-                  }
-                : j
-            )
-          );
-        } catch {
-          // Network error — leave status unchanged, retry next tick
-        }
-      }, 2000)
-    );
-
-    return () => intervals.forEach(clearInterval);
-  }, [pollKey]);
+interface JobRow {
+  id: string;
+  title: string;
+  type: "course" | "video";
+  status: JobStatus;
+  progress: number;
+  createdAt: Date;
 }
 
 export function RecentJobsPanel() {
+  const trpc = useTRPC();
   const router = useRouter();
-  const initial = useRecentJobs();
-  const [jobs, setJobs] = useState<RecentJob[]>(initial);
 
-  useJobPoller(jobs, setJobs);
+  const { data: courses } = useQuery(
+    trpc.courses.getAll.queryOptions({})
+  );
+
+  const { data: videos } = useQuery(
+    trpc.videos.getAll.queryOptions({})
+  );
+
+  const jobs: JobRow[] = [
+    ...(courses ?? []).map((c) => ({
+      id: c.id,
+      title: c.title,
+      type: "course" as const,
+      status: c.status as JobStatus,
+      progress: c.progress,
+      createdAt: new Date(c.createdAt),
+    })),
+    ...(videos ?? []).map((v) => ({
+      id: v.id,
+      title: v.title,
+      type: "video" as const,
+      status: v.status as JobStatus,
+      progress: v.progress,
+      createdAt: new Date(v.createdAt),
+    })),
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 8);
+
+  const TYPE_META = {
+    course: { icon: "📚", accent: "bg-amber-50" },
+    video:  { icon: "🎬", accent: "bg-pink-50" },
+  };
+
+  function formatDate(date: Date): string {
+    const diff = Date.now() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1)  return "just now";
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `${hrs} hr ago`;
+    return date.toLocaleDateString();
+  }
+
+  if (jobs.length === 0) return null;
 
   return (
     <div className="space-y-2">
@@ -108,7 +86,7 @@ export function RecentJobsPanel() {
           Recent
         </p>
         <button
-          onClick={() => router.push("/jobs")}
+          onClick={() => router.push("/courses")}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           View all →
@@ -118,34 +96,33 @@ export function RecentJobsPanel() {
       <div className="rounded-xl border border-border bg-background overflow-hidden">
         {jobs.map((job, i) => {
           const meta = TYPE_META[job.type];
+          const href = `/${job.type}s/${job.id}`;
+
           return (
             <button
               key={job.id}
-              onClick={() => router.push(`/jobs/${job.id}`)}
+              onClick={() => router.push(href)}
               className={[
                 "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors",
                 i < jobs.length - 1 ? "border-b border-border" : "",
               ].join(" ")}
             >
-              {/* Icon */}
               <div
                 className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${meta.accent}`}
               >
                 {meta.icon}
               </div>
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
-                  {job.name}
+                  {job.title}
                 </p>
                 <p className="text-xs text-muted-foreground capitalize">
-                  {job.type.replace("-", " ")} · {job.createdAt}
+                  {job.type} · {formatDate(job.createdAt)}
                 </p>
               </div>
 
-              {/* Progress bar for in-flight jobs */}
-              {job.status === "processing" && job.progress !== undefined && (
+              {(job.status === "processing" || job.status === "pending") && (
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="w-16 h-1 bg-border rounded-full overflow-hidden">
                     <div
@@ -157,7 +134,6 @@ export function RecentJobsPanel() {
                 </div>
               )}
 
-              {/* Status pill */}
               <span
                 className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_STYLES[job.status]}`}
               >

@@ -194,4 +194,69 @@ model MomoTopUp {
   createdAt   DateTime @default(now())
 }
 
+// Add these models to your existing schema.prisma
+// They follow the same ownership pattern as your existing Generation model
+// (userId + organizationId for Clerk multi-tenancy)
+
+enum JobStatus {
+  pending
+  processing
+  done
+  error
+}
+
+model Course {
+  id             String    @id @default(cuid())
+  userId         String
+  organizationId String
+
+  title          String
+  script         String    @db.Text
+
+  status         JobStatus @default(pending)
+  progress       Int       @default(0)
+
+  // Structured output from PLATFORM_API — stored as JSON
+  result         Json?
+
+  externalJobId  String?   // ID returned by PLATFORM_API_URL
+  errorMessage   String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model Video {
+  id             String    @id @default(cuid())
+  userId         String
+  organizationId String
+
+  title          String
+  script         String    @db.Text
+
+  status         JobStatus @default(pending)
+  progress       Int       @default(0)
+
+  // R2 URL of the rendered video, populated when status = done
+  outputUrl      String?
+
+  externalJobId  String?   // ID returned by INSTASKUL_URL
+  errorMessage   String?
+
+  // Optional: duration in seconds, populated after rendering
+  durationSeconds Int?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+
 

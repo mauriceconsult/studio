@@ -1,50 +1,52 @@
-import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import path from "path";
-import { generateTTS } from "@/lib/tts";
-import { composeVideo } from "@/lib/ffmpeg";
-import { splitScript, toSRT } from "@/lib/segment";
+// src/app/api/generate-video/route.ts
+// Expects the video record to already exist (created by trpc.videos.create).
+// Updates externalJobId once INSTASKUL accepts the job.
 
-const OUT_DIR = path.join(process.cwd(), "public", "videos");
+import { db } from "@/lib/db";
+import { env } from "@/lib/env";
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
-  let body;
-
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid or empty JSON body" },
-      { status: 400 },
-    );
+  const { orgId } = await auth();
+  if (!orgId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { script, jobId } = body;
+  const { videoId } = await req.json();
 
-  if (!script) {
-    return NextResponse.json({ error: "script required" }, { status: 400 });
+  const video = await db.video.findFirst({
+    where: { id: videoId, organizationId: orgId },
+  });
+
+  if (!video) {
+    return Response.json({ error: "Video not found" }, { status: 404 });
   }
 
-  const id = jobId ?? crypto.randomUUID();
-  const audioPath = path.join(OUT_DIR, `${id}.wav`);
-  const srtPath = path.join(OUT_DIR, `${id}.srt`);
-  const videoPath = path.join(OUT_DIR, `${id}.mp4`);
+  // Dispatch to INSTASKUL
+  const res = await fetch(`${env.INSTASKUL_URL}/render`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.PLATFORM_API_KEY}`,
+    },
+    body: JSON.stringify({ script: video.script }),
+  });
 
-  // 1 — TTS
-  const audioBuffer = await generateTTS(script);
-  await writeFile(audioPath, audioBuffer);
+  if (!res.ok) {
+    await db.video.update({
+      where: { id: video.id },
+      data: { status: "error", errorMessage: "Failed to dispatch render job" },
+    });
+    return Response.json({ error: "Dispatch failed" }, { status: 502 });
+  }
 
-  // 2 — Timing + subtitles
-  const segments = splitScript(script);
-  await writeFile(srtPath, toSRT(segments));
+  const { jobId } = await res.json();
 
-  // 3 — Visuals: use a static brand image per segment (swap for real screenshots)
-  const imagePaths = segments.map(() =>
-    path.join(process.cwd(), "public", "slides", "default.png"),
-  );
+  await db.video.update({
+    where: { id: video.id },
+    data: { status: "processing", externalJobId: jobId },
+  });
 
-  // 4 — Compose
-  await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
-
-  return NextResponse.json({ id, url: `/videos/${id}.mp4` });
+  return Response.json({ videoId: video.id, jobId });
 }

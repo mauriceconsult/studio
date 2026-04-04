@@ -1,31 +1,53 @@
-import { createJob, updateJob } from "@/lib/job";
+// src/app/api/generate-course/route.ts
+// Replaces the original stateless GeneratePage API call.
+// Expects the course record to already exist (created by trpc.courses.create).
+// Updates externalJobId once PLATFORM_API accepts the job.
 
-export async function POST(req: Request) {
-  const { script } = await req.json();
+import { prisma } from "@/lib/db";
+import { env } from "@/lib/env";
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest } from "next/server";
 
-  const job = await createJob();
-
-  // run async WITHOUT blocking response
-  runJob(job.id, script);
-
-  return Response.json({ jobId: job.id });
-}
-
-async function runJob(jobId: string, script: string) {
-  
-  void script; // acknowledged – reserved for future pipeline use
-  try {
-    for (let i = 1; i <= 5; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      await updateJob(jobId, { progress: i * 20 });
-    }
-
-    await updateJob(jobId, {
-      status: "done",
-      progress: 100,
-      result: "/sample-video.mp4",
-    });
-  } catch {
-    await updateJob(jobId, { status: "error" });
+export async function POST(req: NextRequest) {
+  const { orgId } = await auth();
+  if (!orgId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { courseId } = await req.json();
+
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, organizationId: orgId },
+  });
+
+  if (!course) {
+    return Response.json({ error: "Course not found" }, { status: 404 });
+  }
+
+  // Dispatch to external platform
+  const res = await fetch(`${env.PLATFORM_API_URL}/jobs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.PLATFORM_API_KEY}`,
+    },
+    body: JSON.stringify({ script: course.script }),
+  });
+
+  if (!res.ok) {
+    await prisma.course.update({
+      where: { id: course.id },
+      data: { status: "error", errorMessage: "Failed to dispatch job" },
+    });
+    return Response.json({ error: "Dispatch failed" }, { status: 502 });
+  }
+
+  const { jobId } = await res.json();
+
+  await prisma.course.update({
+    where: { id: course.id },
+    data: { status: "processing", externalJobId: jobId },
+  });
+
+  return Response.json({ courseId: course.id, jobId });
 }
