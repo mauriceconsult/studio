@@ -5,11 +5,42 @@ import { promisify } from "util";
 import { generateTTS } from "@/lib/tts";
 import { composeVideo } from "@/lib/ffmpeg";
 import { splitScript, toSRT } from "@/lib/segment";
-import { updateJob } from "./job";
 import { debit, hasAccess } from "@/lib/platform";
+import { prisma } from "@/lib/db";
 
 const OUT_DIR       = path.join(process.cwd(), "public", "videos");
 const execFileAsync = promisify(execFile);
+
+// ─── Prisma job update helpers ────────────────────────────────────────────────
+
+type JobUpdate = {
+  status?: "pending" | "processing" | "done" | "error";
+  progress?: number;
+  result?: string;
+  errorMessage?: string;
+};
+
+async function updateCourse(id: string, data: JobUpdate) {
+  const { result, ...rest } = data;
+  await prisma.course.update({
+    where: { id },
+    data: {
+      ...rest,
+      ...(result !== undefined ? { result: { output: result } } : {}),
+    },
+  });
+}
+
+async function updateVideo(id: string, data: JobUpdate & { outputUrl?: string }) {
+  const { outputUrl, ...rest } = data;
+  await prisma.video.update({
+    where: { id },
+    data: {
+      ...rest,
+      ...(outputUrl !== undefined ? { outputUrl } : {}),
+    },
+  });
+}
 
 // ─── Video duration via ffprobe ───────────────────────────────────────────────
 
@@ -28,7 +59,7 @@ async function getVideoMinutes(videoPath: string): Promise<number> {
     ]);
     const seconds = parseFloat(stdout.trim());
     if (!isNaN(seconds) && seconds > 0) {
-      return Math.ceil(seconds / 60); // always ceil — never under-bill
+      return Math.ceil(seconds / 60);
     }
   } catch {
     // ffprobe unavailable or file unreadable — bill 1 minute as safe fallback
@@ -36,58 +67,55 @@ async function getVideoMinutes(videoPath: string): Promise<number> {
   return 1;
 }
 
-// ─── Main job runner ──────────────────────────────────────────────────────────
+// ─── Course job runner ────────────────────────────────────────────────────────
 
 export async function runCourseJob(
-  jobId:  string,
+  jobId: string,
   script: string,
   userId: string,
 ) {
   try {
-    // 0. Guard — ensure output directory exists
     await mkdir(OUT_DIR, { recursive: true });
 
-    // 1. Access check — fail fast before any compute
     const allowed = await hasAccess(userId, "studio");
     if (!allowed) {
-      await updateJob(jobId, {
+      await updateCourse(jobId, {
         status: "error",
-        result: "Access denied — user does not have studio access",
+        errorMessage: "Access denied — user does not have studio access",
       });
       return;
     }
 
-    await updateJob(jobId, { status: "processing", progress: 10 });
+    await updateCourse(jobId, { status: "processing", progress: 10 });
 
     const audioPath = path.join(OUT_DIR, `${jobId}.wav`);
     const srtPath   = path.join(OUT_DIR, `${jobId}.srt`);
     const videoPath = path.join(OUT_DIR, `${jobId}.mp4`);
 
-    // 2. TTS
+    // TTS
     const audioBuffer = await generateTTS(script);
     await writeFile(audioPath, audioBuffer);
-    await updateJob(jobId, { progress: 30 });
+    await updateCourse(jobId, { progress: 30 });
 
-    // 3. Subtitles
+    // Subtitles
     const segments = splitScript(script);
     await writeFile(srtPath, toSRT(segments));
-    await updateJob(jobId, { progress: 50 });
+    await updateCourse(jobId, { progress: 50 });
 
-    // 4. Images (placeholder — replace with real slide generation)
+    // Images (placeholder — replace with real slide generation)
     const imagePaths = segments.map(() =>
       path.join(process.cwd(), "public", "slides", "default.png"),
     );
-    await updateJob(jobId, { progress: 65 });
+    await updateCourse(jobId, { progress: 65 });
 
-    // 5. Video composition
+    // Video composition
     await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
-    await updateJob(jobId, { progress: 85 });
+    await updateCourse(jobId, { progress: 85 });
 
-    // 6. Measure actual video duration — must happen after composition
+    // Measure actual video duration
     const videoMinutes = await getVideoMinutes(videoPath);
 
-    // 7. Debit credits only after successful completion — two separate events:
-    //    a) TTS characters consumed
+    // Debit credits after successful completion
     await debit({
       userId,
       app:       "studio",
@@ -96,7 +124,6 @@ export async function runCourseJob(
       meta:      { jobId },
     });
 
-    //    b) Video minutes rendered — this is the variable cost unit
     await debit({
       userId,
       app:       "studio",
@@ -105,23 +132,91 @@ export async function runCourseJob(
       meta:      { jobId, videoMinutes: String(videoMinutes) },
     });
 
-    await updateJob(jobId, {
+    await updateCourse(jobId, {
       status:   "done",
       progress: 100,
       result:   `/videos/${jobId}.mp4`,
     });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    await updateJob(jobId, { status: "error", result: errorMessage });
+    await updateCourse(jobId, { status: "error", errorMessage });
+  }
+}
+
+// ─── Video job runner ─────────────────────────────────────────────────────────
+
+export async function runVideoJob(
+  jobId: string,
+  script: string,
+  userId: string,
+) {
+  try {
+    await mkdir(OUT_DIR, { recursive: true });
+
+    const allowed = await hasAccess(userId, "studio");
+    if (!allowed) {
+      await updateVideo(jobId, {
+        status: "error",
+        errorMessage: "Access denied — user does not have studio access",
+      });
+      return;
+    }
+
+    await updateVideo(jobId, { status: "processing", progress: 10 });
+
+    const audioPath = path.join(OUT_DIR, `${jobId}.wav`);
+    const srtPath   = path.join(OUT_DIR, `${jobId}.srt`);
+    const videoPath = path.join(OUT_DIR, `${jobId}.mp4`);
+
+    const audioBuffer = await generateTTS(script);
+    await writeFile(audioPath, audioBuffer);
+    await updateVideo(jobId, { progress: 30 });
+
+    const segments = splitScript(script);
+    await writeFile(srtPath, toSRT(segments));
+    await updateVideo(jobId, { progress: 50 });
+
+    const imagePaths = segments.map(() =>
+      path.join(process.cwd(), "public", "slides", "default.png"),
+    );
+    await updateVideo(jobId, { progress: 65 });
+
+    await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
+    await updateVideo(jobId, { progress: 85 });
+
+    const videoMinutes = await getVideoMinutes(videoPath);
+
+    await debit({
+      userId,
+      app:       "studio",
+      eventType: "characters_synthesized",
+      amount:    ttsCreditCost(script),
+      meta:      { jobId },
+    });
+
+    await debit({
+      userId,
+      app:       "studio",
+      eventType: "video_minutes",
+      amount:    videoMinutes,
+      meta:      { jobId, videoMinutes: String(videoMinutes) },
+    });
+
+    const outputUrl = `/videos/${jobId}.mp4`;
+
+    await updateVideo(jobId, {
+      status:    "done",
+      progress:  100,
+      outputUrl,
+    });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    await updateVideo(jobId, { status: "error", errorMessage });
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * TTS credit cost by character count.
- * 10 credits per 1,000 characters — mirrors OVERAGE_PRICES.characters_synthesized.
- */
 function ttsCreditCost(script: string): number {
   return Math.ceil((script.length / 1000) * 10);
 }

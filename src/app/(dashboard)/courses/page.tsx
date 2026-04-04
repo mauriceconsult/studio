@@ -4,6 +4,8 @@ import { prefetch, trpc, HydrateClient } from "@/trpc/server";
 import { CoursesView } from "@/features/courses/views/courses-view";
 import { coursesSearchParamsCache } from "@/features/courses/lib/params";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Courses" };
 
 export default async function CoursesPage({

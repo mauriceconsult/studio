@@ -2,7 +2,7 @@
 // INSTASKUL_URL posts status updates here as a video renders.
 // Secure this endpoint by validating the shared secret in env.ts.
 
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { NextRequest } from "next/server";
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const body: VideoWebhookPayload = await req.json();
 
-  const video = await db.video.findFirst({
+  const video = await prisma.video.findFirst({
     where: { externalJobId: body.jobId },
   });
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Video not found" }, { status: 404 });
   }
 
-  await db.video.update({
+  await prisma.video.update({
     where: { id: video.id },
     data: {
       status:          body.status,

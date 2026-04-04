@@ -2,7 +2,7 @@
 // Expects the video record to already exist (created by trpc.videos.create).
 // Updates externalJobId once INSTASKUL accepts the job.
 
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
   const { videoId } = await req.json();
 
-  const video = await db.video.findFirst({
+  const video = await prisma.video.findFirst({
     where: { id: videoId, organizationId: orgId },
   });
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!res.ok) {
-    await db.video.update({
+    await prisma.video.update({
       where: { id: video.id },
       data: { status: "error", errorMessage: "Failed to dispatch render job" },
     });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const { jobId } = await res.json();
 
-  await db.video.update({
+  await prisma.video.update({
     where: { id: video.id },
     data: { status: "processing", externalJobId: jobId },
   });

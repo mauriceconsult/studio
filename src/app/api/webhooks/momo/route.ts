@@ -65,14 +65,27 @@ export async function POST(req: Request) {
       data: { [field]: { increment: topUp.quantity } },
     });
 
-    // Resume paused job if tied to this top-up
-
-    // in Manager's webhook — instead of prisma.job.update
+    // Resume paused job if tied to this top-up.
+    // jobId may point to either a Course or a Video — try both.
     if (topUp.jobId) {
-      await prisma.job.update({
-        where: { id: topUp.jobId },
-        data: { status: "queued" },
-      });
+      const [course, video] = await Promise.all([
+        prisma.course.findUnique({ where: { id: topUp.jobId } }),
+        prisma.video.findUnique({ where: { id: topUp.jobId } }),
+      ]);
+
+      if (course) {
+        await prisma.course.update({
+          where: { id: topUp.jobId },
+          data: { status: "pending" },
+        });
+      } else if (video) {
+        await prisma.video.update({
+          where: { id: topUp.jobId },
+          data: { status: "pending" },
+        });
+      } else {
+        console.warn("[momo-webhook] jobId not found in Course or Video:", topUp.jobId);
+      }
     }
 
     return Response.json({ received: true, flow: "topup" });
@@ -101,33 +114,25 @@ export async function POST(req: Request) {
       where: { orgId: sub.orgId },
       update: {
         minutesRemaining:
-          included.video_minutes === Infinity
-            ? 999_999
-            : included.video_minutes,
+          included.video_minutes === Infinity ? 999_999 : included.video_minutes,
         charsRemaining:
           included.characters_synthesized === Infinity
             ? 999_999_999
             : included.characters_synthesized,
         voicesRemaining:
-          included.voices_cloned === Infinity
-            ? 999_999
-            : included.voices_cloned,
+          included.voices_cloned === Infinity ? 999_999 : included.voices_cloned,
       },
       create: {
         orgId: sub.orgId,
         subscriptionId: sub.id,
         minutesRemaining:
-          included.video_minutes === Infinity
-            ? 999_999
-            : included.video_minutes,
+          included.video_minutes === Infinity ? 999_999 : included.video_minutes,
         charsRemaining:
           included.characters_synthesized === Infinity
             ? 999_999_999
             : included.characters_synthesized,
         voicesRemaining:
-          included.voices_cloned === Infinity
-            ? 999_999
-            : included.voices_cloned,
+          included.voices_cloned === Infinity ? 999_999 : included.voices_cloned,
       },
     });
 

@@ -4,16 +4,15 @@ import { useTRPC } from "@/trpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
-import { useQueryState } from "nuqs";
-import { videosSearchParamsCache } from "@/features/videos/lib/params";
+import { useQueryState, parseAsString } from "nuqs";
 
 export function VideosView() {
   const trpc = useTRPC();
   const router = useRouter();
-  const [query] = useQueryState("query", videosSearchParamsCache.parsers.query);
+  const [query] = useQueryState("query", parseAsString.withDefault(""));
 
   const { data: videos, isLoading } = useQuery(
-    trpc.videos.getAll.queryOptions({ query: query ?? undefined })
+    trpc.videos.getAll.queryOptions({ query: query || undefined })
   );
 
   return (
@@ -46,7 +45,7 @@ export function VideosView() {
               {" · "}
               {new Date(video.createdAt).toLocaleDateString()}
             </p>
-            {video.status === "processing" && (
+            {(video.status === "processing" || video.status === "pending") && (
               <div className="mt-2 h-1 bg-border rounded-full overflow-hidden">
                 <div
                   className="h-full bg-amber-400 rounded-full transition-all"

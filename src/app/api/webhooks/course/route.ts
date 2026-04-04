@@ -2,7 +2,7 @@
 // PLATFORM_API_URL posts status updates here as a job progresses.
 // Secure this endpoint by validating the shared secret in env.ts.
 
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { NextRequest } from "next/server";
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   const body: CourseWebhookPayload = await req.json();
 
-  const course = await db.course.findFirst({
+  const course = await prisma.course.findFirst({
     where: { externalJobId: body.jobId },
   });
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Course not found" }, { status: 404 });
   }
 
-  await db.course.update({
+  await prisma.course.update({
     where: { id: course.id },
     data: {
       status:       body.status,

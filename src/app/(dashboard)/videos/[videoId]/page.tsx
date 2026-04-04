@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { prefetch, trpc, HydrateClient } from "@/trpc/server";
 import { VideoView } from "@/features/videos/views/video-view";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Video" };
 
 export default async function VideoIdPage({

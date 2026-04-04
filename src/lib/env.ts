@@ -8,7 +8,7 @@ export const env = createEnv({
     POLAR_PRODUCT_ID: z.string().min(1),
     POLAR_METER_VOICE_CREATION: z.string().min(1),
     POLAR_METER_TTS_GENERATION: z.string().min(1),
-    POLAR_METER_VIDEO_MINUTES: z.string().min(1).optional(),
+    POLAR_METER_VIDEO_MINUTES: z.string().min(1),
     DATABASE_URL: z.string().min(1),
     APP_URL: z.string().min(1),
     R2_ACCOUNT_ID: z.string().min(1),

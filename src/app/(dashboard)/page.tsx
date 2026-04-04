@@ -4,6 +4,8 @@ import { prefetch, trpc, HydrateClient } from "@/trpc/server";
 import { VideosView } from "@/features/videos/views/videos-view";
 import { videosSearchParamsCache } from "@/features/videos/lib/params";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Videos" };
 
 export default async function VideosPage({

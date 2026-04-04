@@ -1,7 +1,8 @@
-// src/app/(dashboard)/text-to-speech/page.tsx
 import type { Metadata } from "next";
 import { trpc, HydrateClient, prefetch } from "@/trpc/server";
 import { TextToSpeechView } from "./views/text-to-speech-view";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Text to Speech" };
 

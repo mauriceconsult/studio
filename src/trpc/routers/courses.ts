@@ -1,105 +1,77 @@
 import { z } from "zod";
+import { createTRPCRouter, orgProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
-import { deleteAudio } from "@/lib/r2";
-import { createTRPCRouter, orgProcedure } from "../init";
-
-// ← shared select to avoid duplication
-const courseSelect = {
-  id: true,
-  name: true,
-  description: true,
-  category: true,
-  language: true,
-  variant: true,
-} as const;
+import type { InputJsonValue } from "@prisma/client/runtime/client";
 
 export const coursesRouter = createTRPCRouter({
   getAll: orgProcedure
-    .input(
-      z
-        .object({
-          query: z.string().trim().optional(),
-        })
-        .optional(),
-    )
+    .input(z.object({ query: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const searchFilter = input?.query
-        ? {
-            OR: [
-              { name: { contains: input.query, mode: "insensitive" as const } },
-              {
-                description: {
-                  contains: input.query,
-                  mode: "insensitive" as const,
-                },
-              },
-            ],
-          }
-        : {};
+      return prisma.course.findMany({
+        where: {
+          organizationId: ctx.orgId,
+          ...(input.query
+            ? { title: { contains: input.query, mode: "insensitive" } }
+            : {}),
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }),
 
-      const [custom, system] = await Promise.all([
-        prisma.course.findMany({
-          where: {
-            variant: "CUSTOM",
-            orgId: ctx.orgId,
-            deletedAt: null, // ← soft delete filter
-            ...searchFilter,
-          },
-          orderBy: { createdAt: "desc" },
-          select: courseSelect,
-        }),
-        prisma.course.findMany({
-          where: {
-            variant: "SYSTEM",
-            deletedAt: null, // ← soft delete filter
-            ...searchFilter,
-          },
-          orderBy: { name: "asc" },
-          select: courseSelect,
-        }),
-      ]);
+  getById: orgProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const course = await prisma.course.findFirst({
+        where: { id: input.id, organizationId: ctx.orgId },
+      });
+      if (!course) throw new TRPCError({ code: "NOT_FOUND" });
+      return course;
+    }),
 
-      return { custom, system };
+  create: orgProcedure
+    .input(z.object({ title: z.string().min(1), script: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return prisma.course.create({
+        data: {
+          userId: ctx.userId,
+          organizationId: ctx.orgId,
+          title: input.title,
+          script: input.script,
+          status: "pending",
+        },
+      });
+    }),
+
+  updateStatus: orgProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        status: z.enum(["pending", "processing", "done", "error"]),
+        progress: z.number().min(0).max(100).optional(),
+        result: z.record(z.string(), z.unknown()).optional(),
+        externalJobId: z.string().optional(),
+        errorMessage: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, result, ...rest } = input;
+      return prisma.course.update({
+        where: { id, organizationId: ctx.orgId },
+        data: {
+          ...rest,
+          ...(result !== undefined
+            ? { result: result as InputJsonValue }
+            : {}),
+        },
+      });
     }),
 
   delete: orgProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const course = await prisma.course.findUnique({
-        where: {
-          id: input.id,
-          variant: "CUSTOM",
-          orgId: ctx.orgId,
-          deletedAt: null, // ← only delete active courses
-        },
-        select: { id: true, r2ObjectKey: true },
+      await prisma.course.delete({
+        where: { id: input.id, organizationId: ctx.orgId },
       });
-
-      if (!course) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "course not found",
-        });
-      }
-
-      // Soft delete — preserves generation history integrity
-      await prisma.course.update({
-        where: { id: course.id },
-        data: { deletedAt: new Date() },
-      });
-
-      // Clean up R2 storage — background job candidate for production
-      if (course.r2ObjectKey) {
-        await deleteAudio(course.r2ObjectKey).catch((err) => {
-          console.error("[R2_DELETE_FAILED]", {
-            courseId: course.id,
-            key: course.r2ObjectKey,
-            error: err,
-          });
-        });
-      }
-
-      return { success: true };
     }),
 });

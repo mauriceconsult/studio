@@ -1,14 +1,16 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
+import { createTRPCRouter, orgProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
+import { prisma } from "@/lib/db";
+import type { InputJsonValue } from "@prisma/client/runtime/client";
 
 export const coursesRouter = createTRPCRouter({
-  getAll: protectedProcedure
+  getAll: orgProcedure
     .input(z.object({ query: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.course.findMany({
+      return prisma.course.findMany({
         where: {
-          organizationId: ctx.auth.orgId!,
+          organizationId: ctx.orgId,
           ...(input.query
             ? { title: { contains: input.query, mode: "insensitive" } }
             : {}),
@@ -17,23 +19,23 @@ export const coursesRouter = createTRPCRouter({
       });
     }),
 
-  getById: protectedProcedure
+  getById: orgProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      const course = await ctx.db.course.findFirst({
-        where: { id: input.id, organizationId: ctx.auth.orgId! },
+      const course = await prisma.course.findFirst({
+        where: { id: input.id, organizationId: ctx.orgId },
       });
       if (!course) throw new TRPCError({ code: "NOT_FOUND" });
       return course;
     }),
 
-  create: protectedProcedure
+  create: orgProcedure
     .input(z.object({ title: z.string().min(1), script: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.course.create({
+      return prisma.course.create({
         data: {
-          userId: ctx.auth.userId!,
-          organizationId: ctx.auth.orgId!,
+          userId: ctx.userId,
+          organizationId: ctx.orgId,
           title: input.title,
           script: input.script,
           status: "pending",
@@ -41,30 +43,35 @@ export const coursesRouter = createTRPCRouter({
       });
     }),
 
-  updateStatus: protectedProcedure
+  updateStatus: orgProcedure
     .input(
       z.object({
         id: z.string(),
         status: z.enum(["pending", "processing", "done", "error"]),
         progress: z.number().min(0).max(100).optional(),
-        result: z.unknown().optional(),
+        result: z.record(z.string(), z.unknown()).optional(),
         externalJobId: z.string().optional(),
         errorMessage: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-      return ctx.db.course.update({
-        where: { id, organizationId: ctx.auth.orgId! },
-        data,
+      const { id, result, ...rest } = input;
+      return prisma.course.update({
+        where: { id, organizationId: ctx.orgId },
+        data: {
+          ...rest,
+          ...(result !== undefined
+            ? { result: result as InputJsonValue }
+            : {}),
+        },
       });
     }),
 
-  delete: protectedProcedure
+  delete: orgProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.course.delete({
-        where: { id: input.id, organizationId: ctx.auth.orgId! },
+      await prisma.course.delete({
+        where: { id: input.id, organizationId: ctx.orgId },
       });
     }),
 });

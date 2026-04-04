@@ -1,14 +1,15 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
+import { createTRPCRouter, orgProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
+import { prisma } from "@/lib/db";
 
 export const videosRouter = createTRPCRouter({
-  getAll: protectedProcedure
+  getAll: orgProcedure
     .input(z.object({ query: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.video.findMany({
+      return prisma.video.findMany({
         where: {
-          organizationId: ctx.auth.orgId!,
+          organizationId: ctx.orgId,
           ...(input.query
             ? { title: { contains: input.query, mode: "insensitive" } }
             : {}),
@@ -17,23 +18,23 @@ export const videosRouter = createTRPCRouter({
       });
     }),
 
-  getById: protectedProcedure
+  getById: orgProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      const video = await ctx.db.video.findFirst({
-        where: { id: input.id, organizationId: ctx.auth.orgId! },
+      const video = await prisma.video.findFirst({
+        where: { id: input.id, organizationId: ctx.orgId },
       });
       if (!video) throw new TRPCError({ code: "NOT_FOUND" });
       return video;
     }),
 
-  create: protectedProcedure
+  create: orgProcedure
     .input(z.object({ title: z.string().min(1), script: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.video.create({
+      return prisma.video.create({
         data: {
-          userId: ctx.auth.userId!,
-          organizationId: ctx.auth.orgId!,
+          userId: ctx.userId,
+          organizationId: ctx.orgId,
           title: input.title,
           script: input.script,
           status: "pending",
@@ -41,7 +42,7 @@ export const videosRouter = createTRPCRouter({
       });
     }),
 
-  updateStatus: protectedProcedure
+  updateStatus: orgProcedure
     .input(
       z.object({
         id: z.string(),
@@ -55,17 +56,17 @@ export const videosRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
-      return ctx.db.video.update({
-        where: { id, organizationId: ctx.auth.orgId! },
+      return prisma.video.update({
+        where: { id, organizationId: ctx.orgId },
         data,
       });
     }),
 
-  delete: protectedProcedure
+  delete: orgProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.video.delete({
-        where: { id: input.id, organizationId: ctx.auth.orgId! },
+      await prisma.video.delete({
+        where: { id: input.id, organizationId: ctx.orgId },
       });
     }),
 });
