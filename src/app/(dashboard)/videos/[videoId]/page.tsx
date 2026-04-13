@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { prefetch, trpc, HydrateClient } from "@/trpc/server";
-import { VideoView } from "@/features/videos/views/video-view";
+import { VideoDetailView } from "@/features/videos/views/video-detail-view";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = { title: "Video" };
 
 export default async function VideoIdPage({
@@ -12,12 +11,14 @@ export default async function VideoIdPage({
   params: Promise<{ videoId: string }>;
 }) {
   const { videoId } = await params;
-
   prefetch(trpc.videos.getById.queryOptions({ id: videoId }));
+  prefetch(trpc.videos.getAll.queryOptions({}));
 
   return (
     <HydrateClient>
-      <VideoView videoId={videoId} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <VideoDetailView videoId={videoId} />
+      </div>
     </HydrateClient>
   );
 }

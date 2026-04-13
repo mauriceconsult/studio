@@ -5,7 +5,6 @@ import { CoursesView } from "@/features/courses/views/courses-view";
 import { coursesSearchParamsCache } from "@/features/courses/lib/params";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = { title: "Courses" };
 
 export default async function CoursesPage({
@@ -14,8 +13,7 @@ export default async function CoursesPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { query } = await coursesSearchParamsCache.parse(searchParams);
-
-  prefetch(trpc.courses.getAll.queryOptions({ query }));
+  prefetch(trpc.courses.getAll.queryOptions({ query: query || undefined }));
 
   return (
     <HydrateClient>

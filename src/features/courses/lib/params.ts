@@ -1,5 +1,7 @@
-import { createSearchParamsCache, parseAsString } from "nuqs/server";
+import { parseAsString, createSearchParamsCache } from "nuqs/server";
 
-export const coursesSearchParamsCache = createSearchParamsCache({
+export const coursesSearchParams = {
   query: parseAsString.withDefault(""),
-});
+};
+
+export const coursesSearchParamsCache = createSearchParamsCache(coursesSearchParams);
