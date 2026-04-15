@@ -1,9 +1,35 @@
+/**
+ * src/features/videos/videos-router.ts
+ *
+ * Client-callable tRPC procedures for video management.
+ * NOTE: updateStatus is intentionally absent — status transitions are
+ * written exclusively by the generation worker via /api/webhooks/video,
+ * not by the browser client.
+ */
+
 import { z } from "zod";
-import { createTRPCRouter, orgProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, orgProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/db";
 
+// Shared field allowlist — keeps internal columns off the wire consistently
+// across getAll and getById without duplicating the select object.
+const VIDEO_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  progress: true,
+  outputUrl: true,
+  durationSeconds: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export const videosRouter = createTRPCRouter({
+  // ── getAll ─────────────────────────────────────────────────────────────────
+  // Returns all videos for the org, newest first.
+  // `query` is an optional case-insensitive title filter.
+
   getAll: orgProcedure
     .input(z.object({ query: z.string().optional() }))
     .query(async ({ ctx, input }) => {
@@ -14,22 +40,39 @@ export const videosRouter = createTRPCRouter({
             ? { title: { contains: input.query, mode: "insensitive" } }
             : {}),
         },
+        select: VIDEO_SELECT,
         orderBy: { createdAt: "desc" },
       });
     }),
 
+  // ── getById ────────────────────────────────────────────────────────────────
+  // Fetches a single video. findUnique is correct for a PK lookup and is
+  // more efficient than findFirst (no implicit LIMIT 1 scan).
+
   getById: orgProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const video = await prisma.video.findFirst({
+      const video = await prisma.video.findUnique({
         where: { id: input.id, organizationId: ctx.orgId },
+        select: VIDEO_SELECT,
       });
+
       if (!video) throw new TRPCError({ code: "NOT_FOUND" });
+
       return video;
     }),
 
+  // ── create ─────────────────────────────────────────────────────────────────
+  // Creates a video record in `pending` state. The generation worker picks
+  // it up and drives all subsequent status transitions independently.
+
   create: orgProcedure
-    .input(z.object({ title: z.string().min(1), script: z.string().min(1) }))
+    .input(
+      z.object({
+        title: z.string().min(1).max(255),
+        script: z.string().min(1),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       return prisma.video.create({
         data: {
@@ -39,34 +82,27 @@ export const videosRouter = createTRPCRouter({
           script: input.script,
           status: "pending",
         },
+        select: VIDEO_SELECT,
       });
     }),
 
-  updateStatus: orgProcedure
-    .input(
-      z.object({
-        id: z.string(),
-        status: z.enum(["pending", "processing", "done", "error"]),
-        progress: z.number().min(0).max(100).optional(),
-        outputUrl: z.string().url().optional(),
-        externalJobId: z.string().optional(),
-        errorMessage: z.string().optional(),
-        durationSeconds: z.number().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-      return prisma.video.update({
-        where: { id, organizationId: ctx.orgId },
-        data,
-      });
-    }),
+  // ── delete ─────────────────────────────────────────────────────────────────
+  // Permanently removes a video. Ownership is enforced in the where clause —
+  // Prisma throws P2025 if the record is missing or belongs to another org,
+  // which we surface as NOT_FOUND rather than leaking record existence.
+  // TODO: trigger R2 asset cleanup for outputUrl / thumbnail after deletion.
 
   delete: orgProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      await prisma.video.delete({
-        where: { id: input.id, organizationId: ctx.orgId },
-      });
+      try {
+        await prisma.video.delete({
+          where: { id: input.id, organizationId: ctx.orgId },
+        });
+      } catch {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      return { deleted: true, id: input.id };
     }),
 });
