@@ -1,3 +1,5 @@
+import { VideosLayout } from "@/features/videos/views/videos-layout";
+
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <VideosLayout>{children}</VideosLayout>;
 }

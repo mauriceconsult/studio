@@ -32,6 +32,7 @@ export function VoicePreviewPlaceholder() {
       <Button
         variant="outline"
         size="sm"
+        nativeButton={false}
         render={<Link href="mailto:business@maxnovate.com" />}
       >
         <BookOpen />
