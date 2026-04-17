@@ -16,6 +16,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { clerkClient } from "@clerk/nextjs/server";
+import type { ClerkClient } from "@clerk/backend";
 import { polar } from "@/lib/polar";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -103,15 +104,21 @@ export const billingRouter = createTRPCRouter({
           .transform((c) => c.toUpperCase()),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const client = await clerkClient();
-      await client.organizations.updateOrganization({
-        organizationId: ctx.orgId,
-        publicMetadata: { country: input.country },
-      });
-      const market = deriveMarket(input.country); // always resolved here
-      return { market };
-    }),
+.mutation(async ({ ctx, input }) => {
+  const client = (await clerkClient()) as ClerkClient;
+
+await client.organizations.updateOrganization(
+  ctx.orgId,
+  {
+    publicMetadata: {
+      country: input.country,
+    },
+  }
+);
+
+  const market = deriveMarket(input.country);
+  return { market };
+}),
 
   // ── getStatus ──────────────────────────────────────────────────────────────
 
@@ -178,7 +185,7 @@ export const billingRouter = createTRPCRouter({
       }
 
       const result = await polar.checkouts.create({
-        productId: env.POLAR_PRODUCT_ID,
+        products: [env.POLAR_PRODUCT_ID],
         externalCustomerId: ctx.orgId,
         successUrl: `${env.APP_URL}/billing/success?session={CHECKOUT_SESSION_ID}`,
       });

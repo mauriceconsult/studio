@@ -71,7 +71,7 @@ export async function momoRequestToPay(
       "Ocp-Apim-Subscription-Key": env.MOMO_SUBSCRIPTION_KEY!,
       "X-Reference-Id": referenceId,
       "X-Target-Environment":
-        env.NODE_ENV === "production" ? "mtnuganda" : "sandbox",
+  process.env.MOMO_BASE_URL === "production" ? "mtnuganda" : "sandbox",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -110,7 +110,7 @@ export async function getMoMoPaymentStatus(
         Authorization: `Bearer ${token}`,
         "Ocp-Apim-Subscription-Key": env.MOMO_SUBSCRIPTION_KEY!,
         "X-Target-Environment":
-          env.NODE_ENV === "production" ? "mtnuganda" : "sandbox",
+          env.MOMO_BASE_URL === "production" ? "mtnuganda" : "sandbox",
       },
     }
   );
