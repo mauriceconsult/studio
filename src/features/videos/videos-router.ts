@@ -23,6 +23,8 @@ const VIDEO_SELECT = {
   durationSeconds: true,
   createdAt: true,
   updatedAt: true,
+  script: true,
+  errorMessage: true,
 } as const;
 
 export const videosRouter = createTRPCRouter({
