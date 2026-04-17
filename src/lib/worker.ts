@@ -8,19 +8,25 @@ import { splitScript, toSRT } from "@/lib/segment";
 import { debit, hasAccess } from "@/lib/platform";
 import { prisma } from "@/lib/db";
 
-const OUT_DIR       = path.join(process.cwd(), "public", "videos");
+const OUT_DIR = path.join(process.cwd(), "public", "videos");
 const execFileAsync = promisify(execFile);
 
-// ─── Prisma job update helpers ────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type JobStatus = "pending" | "processing" | "done" | "error";
 
 type JobUpdate = {
-  status?: "pending" | "processing" | "done" | "error";
+  status?: JobStatus;
   progress?: number;
   result?: string;
   errorMessage?: string;
 };
 
-async function updateCourse(id: string, data: JobUpdate) {
+type VideoUpdate = JobUpdate & { outputUrl?: string };
+
+// ─── Prisma helpers ───────────────────────────────────────────────────────────
+
+async function updateCourse(id: string, data: JobUpdate): Promise<void> {
   const { result, ...rest } = data;
   await prisma.course.update({
     where: { id },
@@ -31,7 +37,7 @@ async function updateCourse(id: string, data: JobUpdate) {
   });
 }
 
-async function updateVideo(id: string, data: JobUpdate & { outputUrl?: string }) {
+async function updateVideo(id: string, data: VideoUpdate): Promise<void> {
   const { outputUrl, ...rest } = data;
   await prisma.video.update({
     where: { id },
@@ -42,12 +48,11 @@ async function updateVideo(id: string, data: JobUpdate & { outputUrl?: string })
   });
 }
 
-// ─── Video duration via ffprobe ───────────────────────────────────────────────
+// ─── ffprobe ──────────────────────────────────────────────────────────────────
 
 /**
  * Returns the duration of a video file in whole minutes (ceiling).
- * Requires ffprobe to be available in PATH (bundled with ffmpeg).
- * Falls back to 1 minute if ffprobe fails — never bills zero.
+ * Falls back to 1 to ensure we never bill zero for a completed video.
  */
 async function getVideoMinutes(videoPath: string): Promise<number> {
   try {
@@ -67,156 +72,164 @@ async function getVideoMinutes(videoPath: string): Promise<number> {
   return 1;
 }
 
-// ─── Course job runner ────────────────────────────────────────────────────────
+// ─── Shared pipeline ──────────────────────────────────────────────────────────
+
+/**
+ * Core generation pipeline shared by both course and video jobs.
+ * Returns the output file path and actual video duration in minutes.
+ *
+ * Callers are responsible for:
+ *   - Reporting progress milestones via their own update function
+ *   - Debiting credits after this resolves
+ */
+async function runPipeline(
+  jobId: string,
+  script: string,
+  onProgress: (progress: number) => Promise<void>,
+): Promise<{ videoPath: string; videoMinutes: number }> {
+  await mkdir(OUT_DIR, { recursive: true });
+
+  const audioPath = path.join(OUT_DIR, `${jobId}.wav`);
+  const srtPath   = path.join(OUT_DIR, `${jobId}.srt`);
+  const videoPath = path.join(OUT_DIR, `${jobId}.mp4`);
+
+  const audioBuffer = await generateTTS(script);
+  await writeFile(audioPath, audioBuffer);
+  await onProgress(30);
+
+  const segments = splitScript(script);
+  await writeFile(srtPath, toSRT(segments));
+  await onProgress(50);
+
+  // TODO: replace with real per-segment slide generation
+  const imagePaths = segments.map(() =>
+    path.join(process.cwd(), "public", "slides", "default.png"),
+  );
+  await onProgress(65);
+
+  await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
+  await onProgress(85);
+
+  const videoMinutes = await getVideoMinutes(videoPath);
+
+  return { videoPath, videoMinutes };
+}
+
+/**
+ * Debit both TTS characters and video minutes after a successful generation.
+ * Both debits are fired regardless of individual failures — catch separately
+ * so a billing error doesn't silently suppress the other debit.
+ */
+async function debitGenerationCredits(
+  userId: string,
+  script: string,
+  videoMinutes: number,
+  jobId: string,
+): Promise<void> {
+  await Promise.allSettled([
+    debit({
+      userId,
+      app: "studio",
+      eventType: "characters_synthesized",
+      amount: ttsCreditCost(script),
+      meta: { jobId },
+    }),
+    debit({
+      userId,
+      app: "studio",
+      eventType: "video_minutes",
+      amount: videoMinutes,
+      meta: { jobId, videoMinutes: String(videoMinutes) },
+    }),
+  ]);
+}
+
+// ─── Course job ───────────────────────────────────────────────────────────────
 
 export async function runCourseJob(
   jobId: string,
   script: string,
   userId: string,
-) {
+): Promise<void> {
+  const allowed = await hasAccess(userId, "studio");
+  if (!allowed) {
+    await updateCourse(jobId, {
+      status: "error",
+      errorMessage: "Access denied — user does not have studio access",
+    });
+    return;
+  }
+
   try {
-    await mkdir(OUT_DIR, { recursive: true });
-
-    const allowed = await hasAccess(userId, "studio");
-    if (!allowed) {
-      await updateCourse(jobId, {
-        status: "error",
-        errorMessage: "Access denied — user does not have studio access",
-      });
-      return;
-    }
-
     await updateCourse(jobId, { status: "processing", progress: 10 });
 
-    const audioPath = path.join(OUT_DIR, `${jobId}.wav`);
-    const srtPath   = path.join(OUT_DIR, `${jobId}.srt`);
-    const videoPath = path.join(OUT_DIR, `${jobId}.mp4`);
-
-    // TTS
-    const audioBuffer = await generateTTS(script);
-    await writeFile(audioPath, audioBuffer);
-    await updateCourse(jobId, { progress: 30 });
-
-    // Subtitles
-    const segments = splitScript(script);
-    await writeFile(srtPath, toSRT(segments));
-    await updateCourse(jobId, { progress: 50 });
-
-    // Images (placeholder — replace with real slide generation)
-    const imagePaths = segments.map(() =>
-      path.join(process.cwd(), "public", "slides", "default.png"),
+    const { videoMinutes } = await runPipeline(
+      jobId,
+      script,
+      (progress) => updateCourse(jobId, { progress }),
     );
-    await updateCourse(jobId, { progress: 65 });
 
-    // Video composition
-    await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
-    await updateCourse(jobId, { progress: 85 });
-
-    // Measure actual video duration
-    const videoMinutes = await getVideoMinutes(videoPath);
-
-    // Debit credits after successful completion
-    await debit({
-      userId,
-      app:       "studio",
-      eventType: "characters_synthesized",
-      amount:    ttsCreditCost(script),
-      meta:      { jobId },
-    });
-
-    await debit({
-      userId,
-      app:       "studio",
-      eventType: "video_minutes",
-      amount:    videoMinutes,
-      meta:      { jobId, videoMinutes: String(videoMinutes) },
-    });
+    await debitGenerationCredits(userId, script, videoMinutes, jobId);
 
     await updateCourse(jobId, {
-      status:   "done",
+      status: "done",
       progress: 100,
-      result:   `/videos/${jobId}.mp4`,
+      result: `/videos/${jobId}.mp4`,
     });
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    await updateCourse(jobId, { status: "error", errorMessage });
+  } catch (err) {
+    await updateCourse(jobId, {
+      status: "error",
+      errorMessage: err instanceof Error ? err.message : "Unknown error",
+    });
   }
 }
 
-// ─── Video job runner ─────────────────────────────────────────────────────────
+// ─── Video job ────────────────────────────────────────────────────────────────
 
 export async function runVideoJob(
   jobId: string,
   script: string,
   userId: string,
-) {
+): Promise<void> {
+  const allowed = await hasAccess(userId, "studio");
+  if (!allowed) {
+    await updateVideo(jobId, {
+      status: "error",
+      errorMessage: "Access denied — user does not have studio access",
+    });
+    return;
+  }
+
   try {
-    await mkdir(OUT_DIR, { recursive: true });
-
-    const allowed = await hasAccess(userId, "studio");
-    if (!allowed) {
-      await updateVideo(jobId, {
-        status: "error",
-        errorMessage: "Access denied — user does not have studio access",
-      });
-      return;
-    }
-
     await updateVideo(jobId, { status: "processing", progress: 10 });
 
-    const audioPath = path.join(OUT_DIR, `${jobId}.wav`);
-    const srtPath   = path.join(OUT_DIR, `${jobId}.srt`);
-    const videoPath = path.join(OUT_DIR, `${jobId}.mp4`);
-
-    const audioBuffer = await generateTTS(script);
-    await writeFile(audioPath, audioBuffer);
-    await updateVideo(jobId, { progress: 30 });
-
-    const segments = splitScript(script);
-    await writeFile(srtPath, toSRT(segments));
-    await updateVideo(jobId, { progress: 50 });
-
-    const imagePaths = segments.map(() =>
-      path.join(process.cwd(), "public", "slides", "default.png"),
+    const { videoMinutes } = await runPipeline(
+      jobId,
+      script,
+      (progress) => updateVideo(jobId, { progress }),
     );
-    await updateVideo(jobId, { progress: 65 });
 
-    await composeVideo({ audioPath, imagePaths, srtPath, outputPath: videoPath });
-    await updateVideo(jobId, { progress: 85 });
-
-    const videoMinutes = await getVideoMinutes(videoPath);
-
-    await debit({
-      userId,
-      app:       "studio",
-      eventType: "characters_synthesized",
-      amount:    ttsCreditCost(script),
-      meta:      { jobId },
-    });
-
-    await debit({
-      userId,
-      app:       "studio",
-      eventType: "video_minutes",
-      amount:    videoMinutes,
-      meta:      { jobId, videoMinutes: String(videoMinutes) },
-    });
-
-    const outputUrl = `/videos/${jobId}.mp4`;
+    await debitGenerationCredits(userId, script, videoMinutes, jobId);
 
     await updateVideo(jobId, {
-      status:    "done",
-      progress:  100,
-      outputUrl,
+      status: "done",
+      progress: 100,
+      outputUrl: `/videos/${jobId}.mp4`,
     });
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    await updateVideo(jobId, { status: "error", errorMessage });
+  } catch (err) {
+    await updateVideo(jobId, {
+      status: "error",
+      errorMessage: err instanceof Error ? err.message : "Unknown error",
+    });
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * TTS credit cost in units per 1 000 characters synthesized.
+ * 10 units / 1k chars matches the Polar meter rate at time of writing.
+ */
 function ttsCreditCost(script: string): number {
   return Math.ceil((script.length / 1000) * 10);
 }
