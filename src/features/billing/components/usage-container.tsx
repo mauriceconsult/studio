@@ -12,17 +12,109 @@ import { useTRPC } from "@/trpc/client";
 
 function formatUSD(cents: number): string {
   return new Intl.NumberFormat("en-US", {
-    style:    "currency",
+    style: "currency",
     currency: "USD",
   }).format(cents / 100);
 }
 
 function formatUGX(ugx: number): string {
   return new Intl.NumberFormat("en-UG", {
-    style:    "currency",
+    style: "currency",
     currency: "UGX",
     maximumFractionDigits: 0,
   }).format(ugx);
+}
+
+// ─── Unresolved market — onboarding prompt ────────────────────────────────────
+// Shown when org.publicMetadata.country has never been set.
+// Calls billing.setMarket which writes to Clerk then returns the resolved market.
+
+function UnresolvedMarketCard() {
+  const trpc = useTRPC();
+  const [selected, setSelected] = useState<"UG" | "global" | null>(null);
+
+  const setMarketMutation = useMutation(
+    trpc.billing.setMarket.mutationOptions(),
+  );
+
+  const handleConfirm = useCallback(() => {
+    if (!selected) return;
+    // We send "UG" for Uganda, "US" as a stand-in for global
+    // (any non-UG two-letter code resolves to "global")
+    setMarketMutation.mutate({ country: selected === "global" ? "US" : "UG" });
+  }, [selected, setMarketMutation]);
+
+  if (setMarketMutation.isSuccess) {
+    // Market is now set — the parent's useQuery will refetch automatically
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-semibold tracking-tight text-foreground">
+          Region saved
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Your billing region is now configured. Loading your plan…
+        </p>
+        <Spinner className="size-4 mt-1" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <p className="text-sm font-semibold tracking-tight text-foreground">
+          Set your billing region
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Choose your region to enable the correct payment method.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        {(
+          [
+            { id: "UG", label: "Uganda", sub: "Pay with MoMo" },
+            { id: "global", label: "International", sub: "Pay with card" },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => setSelected(opt.id)}
+            className={`text-left rounded-md border px-2.5 py-2 transition-all text-xs focus:outline-none
+              ${selected === opt.id
+                ? "border-foreground bg-foreground/5"
+                : "border-border hover:border-foreground/40"
+              }`}
+          >
+            <p className="font-medium text-foreground">{opt.label}</p>
+            <p className="text-muted-foreground mt-0.5">{opt.sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {setMarketMutation.isError && (
+        <p className="text-xs text-destructive">
+          {setMarketMutation.error?.message ?? "Failed to save region"}
+        </p>
+      )}
+
+      <Button
+        variant="outline"
+        className="w-full text-xs"
+        size="sm"
+        disabled={!selected || setMarketMutation.isPending}
+        onClick={handleConfirm}
+      >
+        {setMarketMutation.isPending ? (
+          <>
+            <Spinner className="size-3" /> Saving…
+          </>
+        ) : (
+          "Confirm region"
+        )}
+      </Button>
+    </div>
+  );
 }
 
 // ─── Global upgrade card (Polar checkout) ─────────────────────────────────────
@@ -47,7 +139,13 @@ function GlobalUpgradeCard() {
         disabled={isPending}
         onClick={checkout}
       >
-        {isPending ? <><Spinner className="size-3" /> Redirecting…</> : "Upgrade"}
+        {isPending ? (
+          <>
+            <Spinner className="size-3" /> Redirecting…
+          </>
+        ) : (
+          "Upgrade"
+        )}
       </Button>
     </div>
   );
@@ -57,24 +155,24 @@ function GlobalUpgradeCard() {
 
 const MOMO_PLANS = [
   {
-    id:    "starter" as const,
+    id: "starter" as const,
     label: "Starter",
-    ugx:   50_000,
-    desc:  "8 tutorials · 100k chars · 1 voice",
+    ugx: 50_000,
+    desc: "8 tutorials · 100k chars · 1 voice",
   },
   {
-    id:    "pro" as const,
+    id: "pro" as const,
     label: "Pro",
-    ugx:   120_000,
-    desc:  "Unlimited tutorials & speech · 5 voices",
+    ugx: 120_000,
+    desc: "Unlimited tutorials & speech · 5 voices",
   },
 ];
 
 function MomoUpgradeCard() {
   const trpc = useTRPC();
   const [selectedPlan, setSelectedPlan] = useState<"starter" | "pro">("starter");
-  const [phone, setPhone]               = useState("");
-  const [phoneError, setPhoneError]     = useState<string | null>(null);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const initiateMutation = useMutation(
     trpc.billing.initiateMomoPlan.mutationOptions(),
@@ -87,13 +185,10 @@ function MomoUpgradeCard() {
       return;
     }
     setPhoneError(null);
-    // Full number: prefix 256 if not already included
     const fullPhone = digits.startsWith("256") ? digits : `256${digits}`;
     initiateMutation.mutate({ plan: selectedPlan, phone: fullPhone });
   }, [phone, selectedPlan, initiateMutation]);
 
-  // After initiation, parent polling is handled by the billing page /
-  // the MoMo status polling hook — this card just fires the request.
   if (initiateMutation.isSuccess) {
     return (
       <div className="flex flex-col gap-2">
@@ -102,8 +197,10 @@ function MomoUpgradeCard() {
         </p>
         <p className="text-xs text-muted-foreground">
           Approve the MoMo prompt to activate your{" "}
-          <span className="font-medium text-foreground capitalize">{selectedPlan}</span> plan.
-          This card will update automatically.
+          <span className="font-medium text-foreground capitalize">
+            {selectedPlan}
+          </span>{" "}
+          plan. This card will update automatically.
         </p>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Spinner className="size-3" />
@@ -124,32 +221,35 @@ function MomoUpgradeCard() {
         </p>
       </div>
 
-      {/* Plan toggle */}
       <div className="grid grid-cols-2 gap-1.5">
         {MOMO_PLANS.map((plan) => (
           <button
             key={plan.id}
             onClick={() => setSelectedPlan(plan.id)}
             className={`text-left rounded-md border px-2.5 py-2 transition-all text-xs focus:outline-none
-              ${selectedPlan === plan.id
-                ? "border-foreground bg-foreground/5"
-                : "border-border hover:border-foreground/40"
+              ${
+                selectedPlan === plan.id
+                  ? "border-foreground bg-foreground/5"
+                  : "border-border hover:border-foreground/40"
               }`}
           >
             <p className="font-medium text-foreground">{plan.label}</p>
             <p className="text-muted-foreground font-mono">
-              {formatUGX(plan.ugx)}<span className="font-sans">/mo</span>
+              {formatUGX(plan.ugx)}
+              <span className="font-sans">/mo</span>
             </p>
-            <p className="text-muted-foreground/70 mt-0.5 leading-tight">{plan.desc}</p>
+            <p className="text-muted-foreground/70 mt-0.5 leading-tight">
+              {plan.desc}
+            </p>
           </button>
         ))}
       </div>
 
-      {/* Phone input */}
       <div className="flex flex-col gap-1">
-        <div className={`flex rounded-md border overflow-hidden transition-colors
-          focus-within:border-foreground/60
-          ${phoneError ? "border-destructive" : "border-border"}`}
+        <div
+          className={`flex rounded-md border overflow-hidden transition-colors
+            focus-within:border-foreground/60
+            ${phoneError ? "border-destructive" : "border-border"}`}
         >
           <span className="flex items-center px-2 bg-muted text-muted-foreground text-xs border-r border-border">
             +256
@@ -185,18 +285,25 @@ function MomoUpgradeCard() {
         disabled={initiateMutation.isPending || !phone}
         onClick={handlePay}
       >
-        {initiateMutation.isPending
-          ? <><Spinner className="size-3" /> Sending request…</>
-          : `Pay ${formatUGX(MOMO_PLANS.find(p => p.id === selectedPlan)!.ugx)}`
-        }
+        {initiateMutation.isPending ? (
+          <>
+            <Spinner className="size-3" /> Sending request…
+          </>
+        ) : (
+          `Pay ${formatUGX(MOMO_PLANS.find((p) => p.id === selectedPlan)!.ugx)}`
+        )}
       </Button>
     </div>
   );
 }
 
-// ─── Active subscription — Global (Polar portal) ──────────────────────────────
+// ─── Active subscription — Global ─────────────────────────────────────────────
 
-function GlobalUsageCard({ estimatedCostCents }: { estimatedCostCents: number }) {
+function GlobalUsageCard({
+  estimatedCostCents,
+}: {
+  estimatedCostCents: number;
+}) {
   const trpc = useTRPC();
   const portalMutation = useMutation(
     trpc.billing.createPortalSession.mutationOptions(),
@@ -217,7 +324,9 @@ function GlobalUsageCard({ estimatedCostCents }: { estimatedCostCents: number })
         <p className="text-xl font-bold tracking-tight text-foreground mt-1">
           {formatUSD(estimatedCostCents)}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">Estimated this period</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Estimated this period
+        </p>
       </div>
       <Button
         variant="outline"
@@ -226,16 +335,19 @@ function GlobalUsageCard({ estimatedCostCents }: { estimatedCostCents: number })
         disabled={portalMutation.isPending}
         onClick={openPortal}
       >
-        {portalMutation.isPending
-          ? <><Spinner className="size-3" /> Redirecting…</>
-          : "Manage Subscription"
-        }
+        {portalMutation.isPending ? (
+          <>
+            <Spinner className="size-3" /> Redirecting…
+          </>
+        ) : (
+          "Manage Subscription"
+        )}
       </Button>
     </div>
   );
 }
 
-// ─── Active subscription — UG (MoMo credits summary) ─────────────────────────
+// ─── Active subscription — UG ─────────────────────────────────────────────────
 
 interface MomoCredits {
   minutesRemaining: number;
@@ -247,7 +359,7 @@ function MomoUsageCard({
   plan,
   credits,
 }: {
-  plan:    string | null;
+  plan: string | null;
   credits: MomoCredits | null;
 }) {
   return (
@@ -258,10 +370,7 @@ function MomoUsageCard({
             Active plan
           </p>
           {plan && (
-            <span
-              className="text-xs font-medium capitalize bg-foreground text-background
-              px-1.5 py-0.5 rounded-full"
-            >
+            <span className="text-xs font-medium capitalize bg-foreground text-background px-1.5 py-0.5 rounded-full">
               {plan}
             </span>
           )}
@@ -303,32 +412,54 @@ function MomoUsageCard({
 export function UsageContainer() {
   const trpc = useTRPC();
 
-  const { data: marketData } = useQuery(
+  const { data: marketData, isLoading: marketLoading } = useQuery(
     trpc.billing.getMarket.queryOptions(),
   );
 
-  const { data: statusData } = useQuery(
-    trpc.billing.getStatus.queryOptions(),
-  );
+  const market = marketData?.market;
 
-  const market = marketData?.market ?? "global";
-  const isUG   = market === "ug";
+  // Don't fetch status until market is known — avoids a PRECONDITION_FAILED
+  // from getStatus while the org still has no country set.
+  const { data: statusData } = useQuery({
+    ...trpc.billing.getStatus.queryOptions(),
+    enabled: market !== undefined && market !== "unresolved",
+  });
+
+  const isUG = market === "ug";
 
   return (
     <div className="group-data-[collapsible=icon]:hidden bg-background border border-border rounded-lg p-3">
-      {statusData?.hasActiveSubscription ? (
-        isUG ? (
-          <MomoUsageCard
-            plan={statusData.plan}
-            credits={statusData.credits as MomoCredits | null}
-          />
-        ) : (
-          <GlobalUsageCard
-            estimatedCostCents={statusData.estimatedCostCents ?? 0}
-          />
-        )
-      ) : (
-        isUG ? <MomoUpgradeCard /> : <GlobalUpgradeCard />
+      {/* Loading skeleton */}
+      {marketLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Spinner className="size-3" />
+          Loading billing…
+        </div>
+      )}
+
+      {/* Country never set → ask before anything else */}
+      {!marketLoading && market === "unresolved" && <UnresolvedMarketCard />}
+
+      {/* Market resolved — show subscription state */}
+      {!marketLoading && market !== "unresolved" && market !== undefined && (
+        <>
+          {statusData?.hasActiveSubscription ? (
+            isUG ? (
+              <MomoUsageCard
+                plan={statusData.plan}
+                credits={statusData.credits as MomoCredits | null}
+              />
+            ) : (
+              <GlobalUsageCard
+                estimatedCostCents={statusData.estimatedCostCents ?? 0}
+              />
+            )
+          ) : isUG ? (
+            <MomoUpgradeCard />
+          ) : (
+            <GlobalUpgradeCard />
+          )}
+        </>
       )}
     </div>
   );
