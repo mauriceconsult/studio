@@ -15,9 +15,11 @@ export default async function CoursesPage({
   const { query } = await coursesSearchParamsCache.parse(searchParams);
   prefetch(trpc.courses.getAll.queryOptions({ query: query || undefined }));
 
-  return (
-    <HydrateClient>
+return (
+  <HydrateClient>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CoursesView />
-    </HydrateClient>
-  );
+    </div>
+  </HydrateClient>
+);
 }

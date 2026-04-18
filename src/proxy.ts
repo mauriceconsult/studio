@@ -13,23 +13,18 @@ const isOrgSelectionRoute = createRouteMatcher(["/org-selection(.*)"]);
 export default clerkMiddleware(async (auth, req) => {
   const { userId, orgId } = await auth();
 
-  // Allow public routes
-  if (isPublicRoute(req)) {
-    return NextResponse.next();
-  }
+  if (isPublicRoute(req)) return NextResponse.next();
 
-  // Protect non-public routes
-  if (!userId) {
-    await auth.protect();
-  }
+  if (!userId) await auth.protect();
 
-  // Allow org selection page
-  if (isOrgSelectionRoute(req)) {
-    return NextResponse.next();
-  }
+  if (isOrgSelectionRoute(req)) return NextResponse.next();
 
-  // For all protected routes, ensure org is selected
-  if (userId && !orgId) {
+  // ✅ Don't redirect API/tRPC calls — they can't handle HTML redirects
+  const isApiRoute =
+    req.nextUrl.pathname.startsWith("/api") ||
+    req.nextUrl.pathname.startsWith("/trpc");
+
+  if (userId && !orgId && !isApiRoute) {
     const orgSelection = new URL("/org-selection", req.url);
     return NextResponse.redirect(orgSelection);
   }
