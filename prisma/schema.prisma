@@ -101,6 +101,7 @@ model Generation {
   errorMessage String?
 
   usageRecord UsageRecord?
+   platformUserId String? // for multi-tenant orgs, tracks which end-user triggered this generation (if known)
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -115,18 +116,36 @@ model Generation {
 model UsageRecord {
   id String @id @default(cuid())
 
-  orgId        String
-  generationId String?     @unique
-  generation   Generation? @relation(fields: [generationId], references: [id])
-
-  charactersUsed Int
-  month          Int       // 1-12
+  orgId          String
+  month          Int       // 1–12
   year           Int
+
+  // ── Polymorphic generation source ──────────────────────────────────────────
+  // Exactly one of these will be set per row. The others are null.
+  // This replaces the single generationId field that only covered TTS.
+
+  generationId      String?          @unique
+  generation        Generation?      @relation(fields: [generationId], references: [id])
+
+  imageGenerationId String?          @unique
+  imageGeneration   ImageGeneration? @relation(fields: [imageGenerationId], references: [id])
+
+  textGenerationId  String?          @unique
+  textGeneration    TextGeneration?  @relation(fields: [textGenerationId], references: [id])
+
+  // ── Consumed units (what was charged) ─────────────────────────────────────
+  // Set the relevant field, leave others null.
+  // Keeps per-type metering separate so billing stays clean.
+
+  charactersUsed Int?    // TTS: characters synthesised
+  imagesUsed     Int?    // Image: number of images generated (usually 1)
+  tokensUsed     Int?    // Text: LLM tokens consumed
 
   createdAt DateTime @default(now())
 
   @@index([orgId])
-  @@index([orgId, month, year]) // ← fast monthly usage queries
+  @@index([orgId, month, year])
+  @@map("usage_records")
 }
 
 // prisma/schema.prisma (billing additions only — merge with your existing schema)
@@ -252,5 +271,56 @@ model Video {
   @@index([organizationId, createdAt])
 }
 
+// ── 4. Studio: add ImageGeneration model ────────────────────────────────────
+model ImageGeneration {
+  id             String           @id @default(cuid())
+  orgId          String
+  platformUserId String?
+  prompt         String           @db.Text
+  style          String?
+  outputUrl      String?
+  width          Int              @default(1200)
+  height         Int              @default(630)
+  status         GenerationStatus @default(PENDING)
+  errorMessage   String?
+  sourceApp      String           @default("zuriah")
+  sourceEntityId String?
 
+  // Back-relation — owned by UsageRecord
+  usageRecord    UsageRecord?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([platformUserId])
+  @@index([status])
+  @@map("image_generations")
+}
+
+// ── 5. Studio: add TextGeneration model ─────────────────────────────────────
+model TextGeneration {
+  id             String           @id @default(cuid())
+  orgId          String
+  platformUserId String?
+  type           String
+  prompt         String           @db.Text
+  output         String?          @db.Text
+  tokensUsed     Int?
+  status         GenerationStatus @default(PENDING)
+  errorMessage   String?
+  sourceApp      String           @default("zuriah")
+  sourceEntityId String?
+
+  // Back-relation — owned by UsageRecord
+  usageRecord    UsageRecord?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([platformUserId])
+  @@index([type])
+  @@map("text_generations")
+}
 
