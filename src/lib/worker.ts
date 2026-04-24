@@ -7,6 +7,8 @@ import { composeVideo } from "@/lib/ffmpeg";
 import { splitScript, toSRT } from "@/lib/segment";
 import { debit, hasAccess } from "@/lib/platform";
 import { prisma } from "@/lib/db";
+import { systemPrompt } from "@/trpc/routers/text-generations-router";
+
 
 const OUT_DIR = path.join(process.cwd(), "public", "videos");
 const execFileAsync = promisify(execFile);
@@ -16,9 +18,9 @@ const execFileAsync = promisify(execFile);
 type JobStatus = "pending" | "processing" | "done" | "error";
 
 type JobUpdate = {
-  status?: JobStatus;
-  progress?: number;
-  result?: string;
+  status?:       JobStatus;
+  progress?:     number;
+  result?:       string;
   errorMessage?: string;
 };
 
@@ -50,10 +52,6 @@ async function updateVideo(id: string, data: VideoUpdate): Promise<void> {
 
 // ─── ffprobe ──────────────────────────────────────────────────────────────────
 
-/**
- * Returns the duration of a video file in whole minutes (ceiling).
- * Falls back to 1 to ensure we never bill zero for a completed video.
- */
 async function getVideoMinutes(videoPath: string): Promise<number> {
   try {
     const { stdout } = await execFileAsync("ffprobe", [
@@ -63,25 +61,15 @@ async function getVideoMinutes(videoPath: string): Promise<number> {
       videoPath,
     ]);
     const seconds = parseFloat(stdout.trim());
-    if (!isNaN(seconds) && seconds > 0) {
-      return Math.ceil(seconds / 60);
-    }
+    if (!isNaN(seconds) && seconds > 0) return Math.ceil(seconds / 60);
   } catch {
-    // ffprobe unavailable or file unreadable — bill 1 minute as safe fallback
+    // ffprobe unavailable — bill 1 minute as safe fallback
   }
   return 1;
 }
 
-// ─── Shared pipeline ──────────────────────────────────────────────────────────
+// ─── Shared video pipeline ────────────────────────────────────────────────────
 
-/**
- * Core generation pipeline shared by both course and video jobs.
- * Returns the output file path and actual video duration in minutes.
- *
- * Callers are responsible for:
- *   - Reporting progress milestones via their own update function
- *   - Debiting credits after this resolves
- */
 async function runPipeline(
   jobId: string,
   script: string,
@@ -101,7 +89,6 @@ async function runPipeline(
   await writeFile(srtPath, toSRT(segments));
   await onProgress(50);
 
-  // TODO: replace with real per-segment slide generation
   const imagePaths = segments.map(() =>
     path.join(process.cwd(), "public", "slides", "default.png"),
   );
@@ -111,15 +98,9 @@ async function runPipeline(
   await onProgress(85);
 
   const videoMinutes = await getVideoMinutes(videoPath);
-
   return { videoPath, videoMinutes };
 }
 
-/**
- * Debit both TTS characters and video minutes after a successful generation.
- * Both debits are fired regardless of individual failures — catch separately
- * so a billing error doesn't silently suppress the other debit.
- */
 async function debitGenerationCredits(
   userId: string,
   script: string,
@@ -129,17 +110,17 @@ async function debitGenerationCredits(
   await Promise.allSettled([
     debit({
       userId,
-      app: "studio",
+      app:       "studio",
       eventType: "characters_synthesized",
-      amount: ttsCreditCost(script),
-      meta: { jobId },
+      amount:    ttsCreditCost(script),
+      meta:      { jobId },
     }),
     debit({
       userId,
-      app: "studio",
+      app:       "studio",
       eventType: "video_minutes",
-      amount: videoMinutes,
-      meta: { jobId, videoMinutes: String(videoMinutes) },
+      amount:    videoMinutes,
+      meta:      { jobId, videoMinutes: String(videoMinutes) },
     }),
   ]);
 }
@@ -154,7 +135,7 @@ export async function runCourseJob(
   const allowed = await hasAccess(userId, "studio");
   if (!allowed) {
     await updateCourse(jobId, {
-      status: "error",
+      status:       "error",
       errorMessage: "Access denied — user does not have studio access",
     });
     return;
@@ -172,13 +153,13 @@ export async function runCourseJob(
     await debitGenerationCredits(userId, script, videoMinutes, jobId);
 
     await updateCourse(jobId, {
-      status: "done",
+      status:   "done",
       progress: 100,
-      result: `/videos/${jobId}.mp4`,
+      result:   `/videos/${jobId}.mp4`,
     });
   } catch (err) {
     await updateCourse(jobId, {
-      status: "error",
+      status:       "error",
       errorMessage: err instanceof Error ? err.message : "Unknown error",
     });
   }
@@ -194,7 +175,7 @@ export async function runVideoJob(
   const allowed = await hasAccess(userId, "studio");
   if (!allowed) {
     await updateVideo(jobId, {
-      status: "error",
+      status:       "error",
       errorMessage: "Access denied — user does not have studio access",
     });
     return;
@@ -212,24 +193,171 @@ export async function runVideoJob(
     await debitGenerationCredits(userId, script, videoMinutes, jobId);
 
     await updateVideo(jobId, {
-      status: "done",
-      progress: 100,
+      status:    "done",
+      progress:  100,
       outputUrl: `/videos/${jobId}.mp4`,
     });
   } catch (err) {
     await updateVideo(jobId, {
-      status: "error",
+      status:       "error",
       errorMessage: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+}
+
+// ─── Image generation job ─────────────────────────────────────────────────────
+// Called from a background queue or API route when an image generation is requested.
+// The tRPC router creates the DB record and returns immediately;
+// this function runs the actual generation and updates the record.
+
+export async function runImageGenerationJob(
+  recordId: string,
+  userId: string,
+): Promise<void> {
+  const allowed = await hasAccess(userId, "studio");
+  if (!allowed) {
+    await prisma.imageGeneration.update({
+      where: { id: recordId },
+      data:  { status: "FAILED", errorMessage: "Access denied" },
+    });
+    return;
+  }
+
+  const record = await prisma.imageGeneration.findUnique({
+    where: { id: recordId },
+  });
+  if (!record) return;
+
+  try {
+    await prisma.imageGeneration.update({
+      where: { id: recordId },
+      data:  { status: "PROCESSING" },
+    });
+
+    // TODO: replace with actual image generation call
+    // const styledPrompt = buildStyledPrompt(
+    //   record.prompt,
+    //   (record.style ?? "photojournalistic") as Parameters<typeof buildStyledPrompt>[1],
+    // );
+    // const result = await imageClient.generate({ prompt: styledPrompt, width: record.width, height: record.height });
+    // const key    = `image-generations/orgs/${record.orgId}/${recordId}.jpg`;
+    // await uploadImage({ buffer: result.buffer, key });
+    // const outputUrl = `${env.R2_PUBLIC_URL}/${key}`;
+    const outputUrl: string | null = null; // placeholder
+
+    await prisma.imageGeneration.update({
+      where: { id: recordId },
+      data:  { status: "COMPLETED", outputUrl },
+    });
+
+    // Write polymorphic UsageRecord
+    await prisma.usageRecord.create({
+      data: {
+        orgId:             record.orgId,
+        imageGenerationId: recordId,
+        imagesUsed:        1,
+        month:             new Date().getMonth() + 1,
+        year:              new Date().getFullYear(),
+      },
+    });
+
+    // Debit platform credits
+    await debit({
+      userId,
+      app:       "studio",
+      eventType: "image_generated",
+      amount:    1,
+      meta:      { recordId, style: record.style ?? "photojournalistic" },
+    });
+
+  } catch (err) {
+    await prisma.imageGeneration.update({
+      where: { id: recordId },
+      data:  {
+        status:       "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Unknown error",
+      },
+    });
+  }
+}
+
+// ─── Text generation job ──────────────────────────────────────────────────────
+// Same async job pattern as image generation above.
+
+export async function runTextGenerationJob(
+  recordId: string,
+  userId: string,
+): Promise<void> {
+  const allowed = await hasAccess(userId, "studio");
+  if (!allowed) {
+    await prisma.textGeneration.update({
+      where: { id: recordId },
+      data:  { status: "FAILED", errorMessage: "Access denied" },
+    });
+    return;
+  }
+
+  const record = await prisma.textGeneration.findUnique({
+    where: { id: recordId },
+  });
+  if (!record) return;
+
+  const type = record.type as Parameters<typeof systemPrompt>[0];
+
+  try {
+    await prisma.textGeneration.update({
+      where: { id: recordId },
+      data:  { status: "PROCESSING" },
+    });
+
+    // TODO: replace with actual LLM call
+    // const response = await anthropic.messages.create({
+    //   model:    "claude-opus-4-6",
+    //   max_tokens: maxOutputTokens(type),
+    //   system:   systemPrompt(type),
+    //   messages: [{ role: "user", content: record.prompt }],
+    // });
+    // const output     = response.content[0].type === "text" ? response.content[0].text : null;
+    // const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+    const output: string | null = null;    // placeholder
+    const tokensUsed: number    = 0;       // placeholder
+
+    await prisma.textGeneration.update({
+      where: { id: recordId },
+      data:  { status: "COMPLETED", output, tokensUsed },
+    });
+
+    await prisma.usageRecord.create({
+      data: {
+        orgId:            record.orgId,
+        textGenerationId: recordId,
+        tokensUsed,
+        month:            new Date().getMonth() + 1,
+        year:             new Date().getFullYear(),
+      },
+    });
+
+    await debit({
+      userId,
+      app:       "studio",
+      eventType: "text_generated",
+      amount:    Math.ceil(tokensUsed / 1000), // debit per 1k tokens
+      meta:      { recordId, type, tokensUsed: String(tokensUsed) },
+    });
+
+  } catch (err) {
+    await prisma.textGeneration.update({
+      where: { id: recordId },
+      data:  {
+        status:       "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Unknown error",
+      },
     });
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * TTS credit cost in units per 1 000 characters synthesized.
- * 10 units / 1k chars matches the Polar meter rate at time of writing.
- */
 function ttsCreditCost(script: string): number {
   return Math.ceil((script.length / 1000) * 10);
 }

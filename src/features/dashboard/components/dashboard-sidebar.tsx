@@ -28,6 +28,8 @@ import {
   Headphones,
   BookOpen,
   Clapperboard,
+  FileText,
+  ImageIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { UsageContainer } from "@/features/billing/components/usage-container";
@@ -116,6 +118,16 @@ export function DashboardSidebar() {
       title: "Text to speech",
       url: "/text-to-speech",
       icon: AudioLines,
+    },
+    {
+      title: "Text generation",
+      url: "/text-generation",
+      icon: FileText,
+    },
+    {
+      title: "Image generation",
+      url: "/image-generation",
+      icon: ImageIcon,
     },
     {
       title: "Courses",
