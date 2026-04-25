@@ -1,11 +1,3 @@
-import { parseAsString } from "nuqs/server";
-
-// Search params (used by toolbar + page)
-export const textGenerationsSearchParams = {
-  query: parseAsString.withDefault(""),
-};
-
-// Text type options
 export const TEXT_TYPES = [
   { value: "description", label: "Standfirst" },
   { value: "headline",    label: "Headline"   },

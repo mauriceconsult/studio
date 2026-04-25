@@ -5,7 +5,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/generate-video",
-  "/api/trpc(.*)", // ✅ Let tRPC handle its own auth — Clerk must NOT redirect these to HTML sign-in
+  "/api/trpc(.*)", // ✅ tRPC must never receive an HTML redirect
 ]);
 
 const isOrgSelectionRoute = createRouteMatcher(["/org-selection(.*)"]);
@@ -19,10 +19,10 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (isOrgSelectionRoute(req)) return NextResponse.next();
 
-  // ✅ Don't redirect API/tRPC calls — they can't handle HTML redirects
+  // API and tRPC routes return JSON errors themselves — never redirect them
   const isApiRoute =
-    req.nextUrl.pathname.startsWith("/api") ||
-    req.nextUrl.pathname.startsWith("/trpc");
+    req.nextUrl.pathname.startsWith("/api/") ||
+    req.nextUrl.pathname.startsWith("/trpc/");
 
   if (userId && !orgId && !isApiRoute) {
     const orgSelection = new URL("/org-selection", req.url);

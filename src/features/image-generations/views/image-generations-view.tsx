@@ -1,28 +1,21 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// features/image-generations/views/image-generations-view.tsx
-// ═══════════════════════════════════════════════════════════════════════════════
-// "use client"
+"use client";
 
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useQueryState } from "nuqs";
 import { useTRPC } from "@/trpc/client";
-import { imageGenerationsSearchParams } from "../lib/params";
-import { ImageGenerationsList } from "@/features/image-generations/components/image-generations-list";
-import { ImageGenerationsToolbar } from "@/features/image-generations/components/image-generations-toolbar";
+import { ImageGenerationsToolbar } from "../components/image-generations-toolbar";
+import { ImageGenerationsList } from "../components/image-generations-list";
 
-function ImageGenerationsContent() {
-  const trpc = useTRPC();
-  const [query] = useQueryState("query", imageGenerationsSearchParams.query);
-  const { data: generations } = useSuspenseQuery(
-    trpc.imageGenerations.getAll.queryOptions({ query: query || undefined })
-  );
-  return <ImageGenerationsList generations={generations} />;
-}
 export function ImageGenerationsView() {
+  const trpc = useTRPC();
+
+  const { data: generations } = useSuspenseQuery(
+    trpc.imageGenerations.getAll.queryOptions({})
+  );
+
   return (
-    <div className="flex-1 space-y-10 overflow-y-auto p-3 lg:p-6">
+    <div className="flex flex-col gap-6 p-4 lg:p-8">
       <ImageGenerationsToolbar />
-      <ImageGenerationsContent />
+      <ImageGenerationsList generations={generations} />
     </div>
   );
 }

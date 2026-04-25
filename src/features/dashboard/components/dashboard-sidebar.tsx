@@ -104,41 +104,13 @@ export function DashboardSidebar() {
   const clerk = useClerk();
 
   const mainMenuItems: MenuItem[] = [
-    {
-      title: "Dashboard",
-      url: "/",
-      icon: Home,
-    },
-    {
-      title: "Voices",
-      url: "/voices",
-      icon: LayoutGrid,
-    },
-    {
-      title: "Text to speech",
-      url: "/text-to-speech",
-      icon: AudioLines,
-    },
-    {
-      title: "Text generation",
-      url: "/text-generation",
-      icon: FileText,
-    },
-    {
-      title: "Image generation",
-      url: "/image-generation",
-      icon: ImageIcon,
-    },
-    {
-      title: "Courses",
-      url: "/courses",
-      icon: BookOpen,
-    },
-    {
-      title: "Videos",
-      url: "/videos",
-      icon: Clapperboard,
-    },
+    { title: "Dashboard",         url: "/",                  icon: Home        },
+    { title: "Voices",            url: "/voices",            icon: LayoutGrid  },
+    { title: "Text to speech",    url: "/text-to-speech",    icon: AudioLines  },
+    { title: "Text generation",   url: "/text-generations",  icon: FileText    },
+    { title: "Image generation",  url: "/image-generations", icon: ImageIcon   },
+    { title: "Courses",           url: "/courses",           icon: BookOpen    },
+    { title: "Videos",            url: "/videos",            icon: Clapperboard},
   ];
 
   const othersMenuItems: MenuItem[] = [
@@ -158,13 +130,7 @@ export function DashboardSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="flex flex-col gap-4 pt-4">
         <div className="flex items-center gap-2 pl-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
-          <Image
-            src="/logo.svg"
-            alt="Studio"
-            width={24}
-            height={24}
-            className="rounded-sm"
-          />
+          <Image src="/logo.svg" alt="Studio" width={24} height={24} className="rounded-sm" />
           <span className="group-data-[collapsible=icon]:hidden font-semibold text-lg tracking-tighter text-foreground">
             Studio
           </span>
@@ -179,17 +145,13 @@ export function DashboardSidebar() {
               }
               appearance={{
                 elements: {
-                  rootBox:
-                    "w-full! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:flex! group-data-[collapsible=icon]:justify-center!",
-                  organizationSwitcherTrigger:
-                    "w-full! justify-between! bg-white! border! border-border! rounded-md! pl-1! pr-2! py-1! gap-3! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:p-1! shadow-[0px_1px_1.5px_0px_rgba(44,54,53,0.03)]!",
+                  rootBox: "w-full! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:flex! group-data-[collapsible=icon]:justify-center!",
+                  organizationSwitcherTrigger: "w-full! justify-between! bg-white! border! border-border! rounded-md! pl-1! pr-2! py-1! gap-3! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:p-1! shadow-[0px_1px_1.5px_0px_rgba(44,54,53,0.03)]!",
                   organizationPreview: "gap-2!",
                   organizationPreviewAvatarBox: "size-6! rounded-sm!",
-                  organizationPreviewTextContainer:
-                    "text-xs! tracking-tight! font-medium! text-foreground! group-data-[collapsible=icon]:hidden!",
+                  organizationPreviewTextContainer: "text-xs! tracking-tight! font-medium! text-foreground! group-data-[collapsible=icon]:hidden!",
                   organizationPreviewMainIdentifier: "text-[13px]!",
-                  organizationSwitcherTriggerIcon:
-                    "size-4! text-sidebar-foreground! group-data-[collapsible=icon]:hidden!",
+                  organizationSwitcherTriggerIcon: "size-4! text-sidebar-foreground! group-data-[collapsible=icon]:hidden!",
                 },
               }}
             />
@@ -199,11 +161,7 @@ export function DashboardSidebar() {
       <div className="border-b border-dashed border-border" />
       <SidebarContent>
         <NavSection items={mainMenuItems} pathname={pathname} />
-        <NavSection
-          label="Others"
-          items={othersMenuItems}
-          pathname={pathname}
-        />
+        <NavSection label="Others" items={othersMenuItems} pathname={pathname} />
       </SidebarContent>
       <div className="border-b border-dashed border-border" />
       <SidebarFooter className="gap-3 py-3">
@@ -217,13 +175,10 @@ export function DashboardSidebar() {
               }
               appearance={{
                 elements: {
-                  rootBox:
-                    "w-full! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:flex! group-data-[collapsible=icon]:justify-center!",
-                  userButtonTrigger:
-                    "w-full! justify-between! bg-white! border! border-border! rounded-md! pl-1! pr-2! py-1! shadow-[0px_1px_1.5px_0px_rgba(44,54,53,0.03)]! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:after:hidden! [--border:color-mix(in_srgb,transparent,var(--clerk-color-neutral,#000000)_15%)]!",
+                  rootBox: "w-full! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:flex! group-data-[collapsible=icon]:justify-center!",
+                  userButtonTrigger: "w-full! justify-between! bg-white! border! border-border! rounded-md! pl-1! pr-2! py-1! shadow-[0px_1px_1.5px_0px_rgba(44,54,53,0.03)]! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:p-1! group-data-[collapsible=icon]:after:hidden! [--border:color-mix(in_srgb,transparent,var(--clerk-color-neutral,#000000)_15%)]!",
                   userButtonBox: "flex-row-reverse! gap-2!",
-                  userButtonOuterIdentifier:
-                    "text-[13px]! tracking-tight! font-medium! text-foreground! pl-0! group-data-[collapsible=icon]:hidden!",
+                  userButtonOuterIdentifier: "text-[13px]! tracking-tight! font-medium! text-foreground! pl-0! group-data-[collapsible=icon]:hidden!",
                   userButtonAvatarBox: "size-6!",
                 },
               }}
