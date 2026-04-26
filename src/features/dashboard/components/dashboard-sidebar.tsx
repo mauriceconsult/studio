@@ -104,13 +104,13 @@ export function DashboardSidebar() {
   const clerk = useClerk();
 
   const mainMenuItems: MenuItem[] = [
-    { title: "Dashboard",         url: "/",                  icon: Home        },
-    { title: "Voices",            url: "/voices",            icon: LayoutGrid  },
-    { title: "Text to speech",    url: "/text-to-speech",    icon: AudioLines  },
-    { title: "Text generation",   url: "/text-generations",  icon: FileText    },
-    { title: "Image generation",  url: "/image-generations", icon: ImageIcon   },
-    { title: "Courses",           url: "/courses",           icon: BookOpen    },
-    { title: "Videos",            url: "/videos",            icon: Clapperboard},
+    { title: "Dashboard",        url: "/",                  icon: Home         },
+    { title: "Voices",           url: "/voices",            icon: LayoutGrid   },
+    { title: "Text to speech",   url: "/text-to-speech",    icon: AudioLines   },
+    { title: "Text generation",  url: "/text-generations",  icon: FileText     },
+    { title: "Image generation", url: "/image-generations", icon: ImageIcon    },
+    { title: "Courses",          url: "/courses",           icon: BookOpen     },
+    { title: "Videos",           url: "/videos",            icon: Clapperboard },
   ];
 
   const othersMenuItems: MenuItem[] = [
@@ -128,7 +128,7 @@ export function DashboardSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="flex flex-col gap-4 pt-4">
+      <SidebarHeader className="flex flex-col gap-4 pt-4 shrink-0">
         <div className="flex items-center gap-2 pl-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
           <Image src="/logo.svg" alt="Studio" width={24} height={24} className="rounded-sm" />
           <span className="group-data-[collapsible=icon]:hidden font-semibold text-lg tracking-tighter text-foreground">
@@ -158,13 +158,21 @@ export function DashboardSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <div className="border-b border-dashed border-border" />
-      <SidebarContent>
-        <NavSection items={mainMenuItems} pathname={pathname} />
-        <NavSection label="Others" items={othersMenuItems} pathname={pathname} />
+
+      <div className="border-b border-dashed border-border shrink-0" />
+
+      {/* SidebarContent handles its own scroll internally via no-scrollbar.
+          We wrap nav items in a scrollable div so the footer is never hidden. */}
+      <SidebarContent className="flex-1 min-h-0">
+        <div className="overflow-y-auto flex-1 min-h-0 h-full">
+          <NavSection items={mainMenuItems} pathname={pathname} />
+          <NavSection label="Others" items={othersMenuItems} pathname={pathname} />
+        </div>
       </SidebarContent>
-      <div className="border-b border-dashed border-border" />
-      <SidebarFooter className="gap-3 py-3">
+
+      <div className="border-b border-dashed border-border shrink-0" />
+
+      <SidebarFooter className="gap-3 py-3 shrink-0">
         <UsageContainer />
         <SidebarMenu>
           <SidebarMenuItem>
