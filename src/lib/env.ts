@@ -26,7 +26,8 @@ export const env = createEnv({
     MOMO_BASE_URL: z.string().url(),
     MOMO_SUBSCRIPTION_KEY: z.string().min(1),
     MOMO_API_USER: z.string().min(1),
-    MOMO_API_KEY: z.string().min(1),   
+    MOMO_API_KEY: z.string().min(1), 
+ 
   },
   experimental__runtimeEnv: {},
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

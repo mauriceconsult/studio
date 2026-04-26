@@ -16,6 +16,16 @@ import { polar } from "@/lib/polar";
 import { prisma } from "@/lib/db";
 
 export async function assertActiveSubscription(orgId: string): Promise<void> {
+  // ── Dev test bypass ────────────────────────────────────────────────────────
+  // Set ENABLE_TEST_BYPASS=true in .env.local to skip subscription checks.
+  // Never set this in production — SKIP_ENV_VALIDATION will not help you here.
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.ENABLE_TEST_BYPASS === "true"
+  ) {
+    return;
+  }
+
   // ── 1. Polar check (card / international) ──────────────────────────────────
   try {
     const customerState = await polar.customers.getStateExternal({

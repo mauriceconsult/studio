@@ -94,24 +94,24 @@ export const textGenerationsRouter = createTRPCRouter({
         });
       }
 
-      // ── 1. Subscription gate ─────────────────────────────────────────────────
-      try {
-        const customerState = await polar.customers.getStateExternal({
-          externalId: ctx.orgId,
-        });
-        if ((customerState.activeSubscriptions ?? []).length === 0) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "SUBSCRIPTION_REQUIRED",
-          });
-        }
-      } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "SUBSCRIPTION_REQUIRED",
-        });
-      }
+ // ── 1. Subscription gate ─────────────────────────────────────────────────
+// Dev bypass
+if (
+  !(process.env.NODE_ENV === "development" &&
+    process.env.ENABLE_TEST_BYPASS === "true")
+) {
+  try {
+    const customerState = await polar.customers.getStateExternal({
+      externalId: ctx.orgId,
+    });
+    if ((customerState.activeSubscriptions ?? []).length === 0) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "SUBSCRIPTION_REQUIRED" });
+    }
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
+    throw new TRPCError({ code: "FORBIDDEN", message: "SUBSCRIPTION_REQUIRED" });
+  }
+}
 
       // ── 2. Create record (PENDING) ───────────────────────────────────────────
       const record = await prisma.textGeneration.create({

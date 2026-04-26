@@ -61,3 +61,19 @@ export const orgProcedure = baseProcedure.use(async ({ next }) => {
 
   return next({ ctx: { userId, orgId } });
 });
+
+// TEST ONLY - remove before commit
+export const testProcedure = baseProcedure.use(async ({ next }) => {
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.ENABLE_TEST_BYPASS === "true"
+  ) {
+    return next({
+      ctx: {
+        userId: "user_3Cqo4oQp4m0I1JpQvQKK3TuKqap",
+        orgId:  "org_3Cqo8jhDXNrghRlIHGhaQRNPI4B",
+      },
+    });
+  }
+  throw new TRPCError({ code: "UNAUTHORIZED" });
+});
