@@ -213,7 +213,7 @@ export const generationsRouter = createTRPCRouter({
             {
               name: env.POLAR_METER_TTS_GENERATION,
               externalCustomerId: ctx.orgId,
-              metadata: { [env.POLAR_METER_TTS_PROPERTY]: input.text.length },
+              metadata: { [env.POLAR_METER_VIDEO_MINUTES]: input.text.length },
               timestamp: new Date(),
             },
           ],
