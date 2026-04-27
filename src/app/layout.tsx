@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import "@/app/globals.css";
 import { NuqsAdapter } from "nuqs/adapters/next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
@@ -22,20 +22,27 @@ export const metadata: Metadata = {
     template: "%s | Studio",
   },
   description:
-    "Turn scripts into AI-generated tutorial videos with voice cloning",
+    "AI-powered text, image, video, and course generation for journalists, educators, and creators",
   keywords: [
-    "AI tutorial generator",
+    "AI content generation",
     "text to speech",
     "voice cloning",
     "course generator",
     "AI video",
+    "image generation",
+    "newsroom AI",
     "e-learning",
   ],
   authors: [{ name: "Maxnovate Limited" }],
+  icons: {
+    icon: "/logo.svg",
+    shortcut: "/logo.svg",
+    apple: "/logo.svg",
+  },
   openGraph: {
     title: "Studio",
     description:
-      "Turn scripts into AI-generated tutorial videos with voice cloning",
+      "AI-powered text, image, video, and course generation for journalists, educators, and creators",
     type: "website",
   },
 };

@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
+import { HeroPattern } from "../components/hero-pattern";
 import {
   AudioLines,
   LayoutGrid,
@@ -68,29 +69,21 @@ export function DashboardView() {
 
       {/* Hero */}
       <div className="relative border-b border-dashed border-border overflow-hidden">
-        {/* Subtle grid background */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
+        <HeroPattern />
         <div className="relative px-6 py-12 lg:px-16 lg:py-20 max-w-3xl">
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">
             AI Studio
           </p>
           <h1 className="text-3xl lg:text-4xl font-semibold tracking-tight text-foreground leading-tight mb-4">
-            Everything your newsroom needs,{" "}
+            Create faster,{" "}
             <span className="text-muted-foreground font-normal">
-              in one place.
+              AI generation in one place.
             </span>
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">
             Studio brings together AI-powered text, voice, image, video, and
-            course generation — built for editorial teams who need to move fast
-            without compromising quality.
+            course generation — for journalists chasing deadlines, educators
+            building courses, and creators who need great content fast.
           </p>
         </div>
       </div>
