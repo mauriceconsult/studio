@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTRPC } from "@/trpc/client";
-import { GenerationDetail, TEXT_TYPES, TextType } from "./text-generation-types";
+import { GenerationDetail, TEXT_TYPES, TextType } from "../lib/types";
 
 
 export function TextGenerationPromptPanel({

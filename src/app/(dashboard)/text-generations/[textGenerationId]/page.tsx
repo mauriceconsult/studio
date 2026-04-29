@@ -12,7 +12,7 @@ export default async function TextGenerationIdPage({
 }) {
   const { textGenerationId } = await params;
   prefetch(trpc.textGenerations.getById.queryOptions({ id: textGenerationId }));
-  prefetch(trpc.textGenerations.getAll.queryOptions({}));
+  prefetch(trpc.textGenerations.getAll.queryOptions());
 
   return (
     <HydrateClient>
