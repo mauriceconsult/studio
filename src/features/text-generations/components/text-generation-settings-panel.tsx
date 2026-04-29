@@ -3,7 +3,8 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useRouter } from "next/navigation";
-import { GenerationDetail } from "./text-generation-types";
+import { GenerationDetail } from "../lib/types";
+
 
 
 export function TextGenerationSettingsPanel({

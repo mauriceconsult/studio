@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { GenerationDetail } from "./text-generation-types";
+import { GenerationDetail } from "../lib/types";
+
 
 export function TextGenerationOutputPanel({
   generation,
