@@ -4,27 +4,34 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/org-selection(.*)",
   "/api/generate-video",
-  "/api/trpc(.*)", // ✅ tRPC must never receive an HTML redirect
+  "/api/trpc(.*)",
 ]);
 
-const isOrgSelectionRoute = createRouteMatcher(["/org-selection(.*)"]);
+const isApiRoute = createRouteMatcher([
+  "/api/(.*)",
+  "/trpc/(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, orgId } = await auth();
-
+  // ── 1. Public routes — exit immediately, no auth checks ──────────────────
   if (isPublicRoute(req)) return NextResponse.next();
 
-  if (!userId) await auth.protect();
+  // ── 2. API/tRPC — pass through, let the route handler return JSON errors ──
+  if (isApiRoute(req)) return NextResponse.next();
 
-  if (isOrgSelectionRoute(req)) return NextResponse.next();
+  // ── 3. All other routes require auth ─────────────────────────────────────
+  const { userId, orgId } = await auth();
 
-  // API and tRPC routes return JSON errors themselves — never redirect them
-  const isApiRoute =
-    req.nextUrl.pathname.startsWith("/api/") ||
-    req.nextUrl.pathname.startsWith("/trpc/");
+  if (!userId) {
+    const signIn = new URL("/sign-in", req.url);
+    signIn.searchParams.set("redirect_url", req.nextUrl.pathname);
+    return NextResponse.redirect(signIn);
+  }
 
-  if (userId && !orgId && !isApiRoute) {
+  // ── 4. Signed in but no org → org selection ───────────────────────────────
+  if (!orgId) {
     const orgSelection = new URL("/org-selection", req.url);
     return NextResponse.redirect(orgSelection);
   }

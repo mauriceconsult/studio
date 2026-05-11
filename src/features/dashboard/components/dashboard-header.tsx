@@ -5,6 +5,9 @@ const stats = [
   { label: "Voices cloned", value: "38", delta: "↑ 3 new" },
   { label: "Courses created", value: "14", delta: "↑ 2 this month" },
   { label: "Videos rendered", value: "57", delta: "↑ 8 this week" },
+  { label: "Articles generated", value: "1,024", delta: "↑ 20% this week" },
+  { label: "Images generated", value: "892", delta: "↑ 15% this week" },
+
 ];
 
 export function DashboardHeader() {
@@ -15,7 +18,7 @@ export function DashboardHeader() {
         <div>
           <h1 className="text-2xl font-medium text-foreground">Studio</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Speech, voice, courses &amp; video — all in one place.
+            Your speeches, texts, voices, images, courses &amp; videos — all in one place.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border border-border bg-muted text-muted-foreground">

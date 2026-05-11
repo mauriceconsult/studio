@@ -5,18 +5,22 @@ import { useRouter } from "next/navigation";
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 
-type Mode = "speech" | "course" | "video";
+type Mode = "speech" | "course" | "video" | "text" | "image";
 
 const modes: { key: Mode; label: string }[] = [
   { key: "speech",  label: "Speech" },
   { key: "course",  label: "Course" },
   { key: "video",   label: "Video" },
+  { key: "text",    label: "Text" },
+  { key: "image",   label: "Image" },
 ];
 
 const placeholders: Record<Mode, string> = {
   speech: "Paste a script to convert to speech…",
   course: "Paste a course outline or tutorial script…",
   video:  "Paste a script to render as a narrated video…",
+  text:   "Paste text to generate a new text item…",
+  image:  "Paste a description to generate a new image item…",
 };
 
 // Derive a title from the first line of the script (max 60 chars)
@@ -34,30 +38,47 @@ export function TextInputPanel() {
 
   const createCourse = useMutation(trpc.courses.create.mutationOptions());
   const createVideo  = useMutation(trpc.videos.create.mutationOptions());
+  const createText   = useMutation(trpc.textGenerations.create.mutationOptions());
+  const createImage  = useMutation(trpc.imageGenerations.create.mutationOptions());
+  const isPending = createCourse.isPending || createVideo.isPending || createText.isPending || createImage.isPending;
 
-  const isPending = createCourse.isPending || createVideo.isPending;
+ async function handleGenerate() {
+   if (!script.trim()) return;
+   const title = deriveTitle(script);
 
-  async function handleGenerate() {
-    if (!script.trim()) return;
-    const title = deriveTitle(script);
+   if (mode === "speech") {
+     const params = new URLSearchParams({ script });
+     router.push(`/text-to-speech?${params.toString()}`);
+     return;
+   }
 
-    if (mode === "speech") {
-      const params = new URLSearchParams({ script });
-      router.push(`/text-to-speech?${params.toString()}`);
-      return;
-    }
+   if (mode === "course") {
+     const course = await createCourse.mutateAsync({ title, script });
+     router.push(`/courses/${course.id}`);
+     return;
+   }
 
-    if (mode === "course") {
-      const course = await createCourse.mutateAsync({ title, script });
-      router.push(`/courses/${course.id}`);
-      return;
-    }
+   if (mode === "video") {
+     const video = await createVideo.mutateAsync({ title, script });
+     router.push(`/videos/${video.id}`);
+     return;
+   }
 
-    if (mode === "video") {
-      const video = await createVideo.mutateAsync({ title, script });
-      router.push(`/videos/${video.id}`);
-    }
-  }
+   if (mode === "text") {
+     const text = await createText.mutateAsync({
+       type: "body",
+       prompt: script.trim(),
+     });
+     router.push(`/text-generations/${text.id}`);
+   }
+
+   if (mode === "image") {
+     const image = await createImage.mutateAsync({
+       prompt: script.trim(),
+     });
+     router.push(`/image-generations/${image.id}`);
+   }
+ }
 
   return (
     <div className="space-y-2">
@@ -67,7 +88,7 @@ export function TextInputPanel() {
 
       <div className="rounded-xl border border-border bg-background p-4 space-y-3">
         <textarea
-          className="w-full bg-transparent border-none outline-none resize-none text-sm text-foreground placeholder:text-muted-foreground min-h-[80px] leading-relaxed"
+          className="w-full bg-transparent border-none outline-none resize-none text-sm text-foreground placeholder:text-muted-foreground min-h-20 leading-relaxed"
           placeholder={placeholders[mode]}
           value={script}
           onChange={(e) => setScript(e.target.value)}
@@ -102,7 +123,7 @@ export function TextInputPanel() {
           </button>
         </div>
 
-        {(createCourse.isError || createVideo.isError) && (
+        {(createCourse.isError || createVideo.isError || createText.isError || createImage.isError) && (
           <p className="text-xs text-red-600">
             Something went wrong. Please try again.
           </p>
