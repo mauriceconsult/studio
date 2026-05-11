@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
-type Plan = "starter" | "pro";
+type Plan = "starter" | "pro" | "studio";
 type PaymentState = "idle" | "pending" | "polling" | "success" | "error";
 
 interface PlanConfig {
@@ -19,9 +20,11 @@ const PLANS: Record<Plan, PlanConfig> = {
     name: "Starter",
     price: 50000,
     priceUSD: "~$13",
-    description: "For individuals getting started",
+    description: "For individuals exploring AI creation",
     features: [
-      "5 tutorial generations/month",
+      "5 video tutorial generations/month",
+      "20 AI image generations/month",
+      "10,000 words text generation/month",
       "Standard voice cloning",
       "1 GB storage",
       "Community support",
@@ -33,13 +36,31 @@ const PLANS: Record<Plan, PlanConfig> = {
     priceUSD: "~$32",
     description: "For creators and educators",
     features: [
-      "Unlimited tutorial generations",
+      "30 video tutorial generations/month",
+      "100 AI image generations/month",
+      "50,000 words text generation/month",
       "Priority voice cloning",
       "10 GB storage",
       "Priority queue",
       "Email support",
     ],
     popular: true,
+  },
+  studio: {
+    name: "Studio",
+    price: 280000,
+    priceUSD: "~$75",
+    description: "For teams and power users",
+    features: [
+      "Unlimited video generations",
+      "Unlimited AI image generations",
+      "Unlimited text generation",
+      "Custom voice cloning",
+      "50 GB storage",
+      "API access",
+      "Dedicated support",
+      "Up to 5 team members",
+    ],
   },
 };
 
@@ -61,7 +82,6 @@ export default function BillingPage() {
     setState("pending");
 
     try {
-      // Step 1 — initiate Request to Pay
       const res = await fetch("/api/momo-pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,8 +96,6 @@ export default function BillingPage() {
       const { referenceId: refId } = await res.json();
       setReferenceId(refId);
       setState("polling");
-
-      // Step 2 — poll status (mirrors job polling)
       poll(refId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -94,17 +112,11 @@ export default function BillingPage() {
         if (data.status === "SUCCESSFUL") {
           clearInterval(interval);
           setState("success");
-        } else if (
-          data.status === "FAILED" ||
-          data.status === "CANCELLED"
-        ) {
+        } else if (data.status === "FAILED" || data.status === "CANCELLED") {
           clearInterval(interval);
-          setError(
-            data.reason ?? "Payment was not completed. Please try again."
-          );
+          setError(data.reason ?? "Payment was not completed. Please try again.");
           setState("error");
         }
-        // PENDING → keep polling
       } catch {
         clearInterval(interval);
         setError("Lost connection while checking payment. Check your plan status.");
@@ -182,7 +194,6 @@ export default function BillingPage() {
         {state !== "success" && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
             <div className="flex items-center gap-2 mb-1">
-              {/* MTN Yellow dot indicator */}
               <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
               <p className="text-sm font-medium text-gray-700">
                 MTN Mobile Money
@@ -291,21 +302,21 @@ export default function BillingPage() {
             {referenceId && (
               <p className="text-xs text-gray-300 font-mono">{referenceId}</p>
             )}
-            <a
+            <Link
               href="/generate"
               className="inline-block mt-2 bg-black text-white text-sm px-6 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
             >
               Start generating
-            </a>
+            </Link>
           </div>
         )}
 
         {/* Trust footer */}
         <p className="text-xs text-center text-gray-300">
           Payments processed via MTN Mobile Money Uganda ·{" "}
-          <a href="/terms" className="hover:text-gray-500 transition-colors">Terms</a>{" "}
-          ·{" "}
-          <a href="/privacy" className="hover:text-gray-500 transition-colors">Privacy</a>
+          <Link href="/terms" className="hover:text-gray-500 transition-colors">Terms</Link>
+          {" "}·{" "}
+          <Link href="/privacy" className="hover:text-gray-500 transition-colors">Privacy</Link>
         </p>
       </div>
     </main>
@@ -314,22 +325,9 @@ export default function BillingPage() {
 
 function Spinner() {
   return (
-    <svg
-      className="animate-spin w-4 h-4 text-white"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12" cy="12" r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+    <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }
