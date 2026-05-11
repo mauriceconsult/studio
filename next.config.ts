@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   devIndicators: false,
   experimental: {
-    proxyClientMaxBodySize: "10mb",
+    proxyClientMaxBodySize: "20mb",
   }
 };
 
