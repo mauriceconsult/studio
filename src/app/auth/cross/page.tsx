@@ -11,11 +11,12 @@ const PLATFORM_API_KEY = process.env.PLATFORM_API_KEY ?? "";
 
 const TYPE_ROUTE: Record<string, string> = {
   image:       "/image-generations",
-  video:       "/videos",              // ← added
+  video:       "/videos",
   description: "/text-generations",
   headline:    "/text-generations",
   script:      "/text-generations",
   captions:    "/text-generations",
+  course:      "/generate",           // ← new entry
 };
 
 interface Props {
@@ -35,20 +36,21 @@ export default async function CrossAuthPage({ searchParams }: Props) {
     redirect("/sign-in?error=missing_token");
   }
 
-  function buildDest(): string {
-    const basePath =
-      (type && TYPE_ROUTE[type]) ??
-      (courseId ? `/generate?courseId=${courseId}` : "/");
+function buildDest(): string {
+  const basePath =
+    (type && TYPE_ROUTE[type]) ??
+    (courseId ? `/generate?courseId=${courseId}` : "/");
 
-    if (!prompt && !type) return basePath;
+  if (!prompt && !type) return basePath;
 
-    const params = new URLSearchParams();
-    if (prompt)    params.set("prompt", prompt);
-    if (type)      params.set("type", type);
-    if (returnTo)  params.set("returnTo", returnTo);
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId); // ← preserve courseId
+  if (prompt) params.set("prompt", prompt);
+  if (type) params.set("type", type);
+  if (returnTo) params.set("returnTo", returnTo);
 
-    return `${basePath}?${params.toString()}`;
-  }
+  return `${basePath}?${params.toString()}`;
+}
 
   const { userId } = await auth();
   if (userId) {
