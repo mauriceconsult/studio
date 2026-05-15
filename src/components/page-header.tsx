@@ -28,7 +28,7 @@ export function PageHeader({
           variant="outline"
           size="sm"
           nativeButton={false} // ← add this
-          render={<Link href="mailto:business@maxnovate.com" />}
+          render={<Link href="mailto:support@instaskul.com" />}
         >
           <ThumbsUp />
           <span className="hidden lg:block">Feedback</span>
@@ -37,7 +37,7 @@ export function PageHeader({
           variant="outline"
           size="sm"
           nativeButton={false} // ← add this
-          render={<Link href="mailto:business@maxnovate.com" />}
+          render={<Link href="mailto:support@instaskul.com" />}
         >
           <Headphones />
           <span className="hidden lg:block">Need help?</span>
