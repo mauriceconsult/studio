@@ -1,3 +1,4 @@
+"use client";
 import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 import { HeroPattern } from "../components/hero-pattern";
