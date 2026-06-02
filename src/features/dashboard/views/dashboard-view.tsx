@@ -88,10 +88,27 @@ export function DashboardView() {
         </div>
       </div>
 
+      {/* Studio Intelligence */}
+      <div className="px-6 lg:px-16 py-6">
+        <div className="rounded-xl border p-5 bg-muted/30">
+          <h2 className="text-sm font-semibold mb-2">Studio Intelligence</h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            AI-powered insights and actions across your business.
+          </p>
+
+          <button
+            onClick={() => window.open("/api/studio/documents/strategy")}
+            className="text-xs px-3 py-2 rounded-md bg-black text-white"
+          >
+            Generate Strategy Report
+          </button>
+        </div>
+      </div>
+
       {/* Feature grid */}
       <div className="flex-1 p-6 lg:p-16">
         <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-6">
-          What you can do
+          Tools for your content creation and workflow automation. Click any tool to get started.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
