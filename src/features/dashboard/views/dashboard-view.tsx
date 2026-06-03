@@ -11,6 +11,7 @@ import {
   Clapperboard,
   ArrowRight,
 } from "lucide-react";
+import { useStudioContext } from "@/hooks/use-studio-context";
 
 const features = [
   {
@@ -63,7 +64,9 @@ const features = [
   },
 ] as const;
 
-export function DashboardView() {
+export function DashboardView() { 
+  const { hasData, loading } = useStudioContext();
+
   return (
     <div className="flex flex-col min-h-full">
       <PageHeader title="Studio" className="lg:hidden" />
@@ -98,10 +101,21 @@ export function DashboardView() {
           </p>
 
           <button
-            onClick={() => window.open("/api/studio/documents/strategy")}
-            className="text-xs px-3 py-2 rounded-md bg-black text-white"
+            disabled={loading}
+            onClick={() => {
+              if (hasData) {
+                window.open("/api/studio/documents/strategy");
+              } else {
+                window.location.href = "/courses";
+              }
+            }}
+            className="text-xs px-3 py-2 rounded-md bg-black text-white disabled:opacity-50"
           >
-            Generate Strategy Report
+            {loading
+              ? "Loading..."
+              : hasData
+                ? "Generate Strategy Report"
+                : "Get Started with Studio AI"}
           </button>
         </div>
       </div>
@@ -109,7 +123,8 @@ export function DashboardView() {
       {/* Feature grid */}
       <div className="flex-1 p-6 lg:p-16">
         <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-6">
-          Tools for your content creation and workflow automation. Click any tool to get started.
+          Tools for your content creation and workflow automation. Click any
+          tool to get started.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
