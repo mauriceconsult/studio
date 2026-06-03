@@ -1,4 +1,5 @@
 "use client";
+
 import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 import { HeroPattern } from "../components/hero-pattern";
@@ -64,14 +65,45 @@ const features = [
   },
 ] as const;
 
-export function DashboardView() { 
+const products = [
+  {
+    emoji: "🎓",
+    title: "Educators & Coaches",
+    description:
+      "Create and sell courses, manage students, and get AI-generated course content.",
+    href: process.env.NEXT_PUBLIC_INSTASKUL_URL ?? "https://instaskul.com",
+    label: "Start on InstaSkul",
+  },
+  {
+    emoji: "✍️",
+    title: "Journalists & Creators",
+    description:
+      "Publish articles, build your readership, and get AI drafts for your next story.",
+    href: process.env.NEXT_PUBLIC_MAXNOVATE_URL ?? "https://maxnovate.com",
+    label: "Start your blog",
+  },
+  {
+    emoji: "🛍️",
+    title: "Entrepreneurs & SMEs",
+    description:
+      "Set up your online store, list products, and accept mobile money payments.",
+    href: process.env.NEXT_PUBLIC_VENDLY_URL ?? "https://vendly.maxnovate.com",
+    label: "Open your store",
+  },
+];
+
+export function DashboardView() {
   const { hasData, loading } = useStudioContext();
+
+  const handleGenerateReport = () => {
+    window.open("/api/studio/documents/strategy", "_blank");
+  };
 
   return (
     <div className="flex flex-col min-h-full">
       <PageHeader title="Studio" className="lg:hidden" />
 
-      {/* Hero */}
+      {/* Hero Section */}
       <div className="relative border-b border-dashed border-border overflow-hidden">
         <HeroPattern />
         <div className="relative px-6 py-12 lg:px-16 lg:py-20 max-w-3xl">
@@ -92,63 +124,102 @@ export function DashboardView() {
         </div>
       </div>
 
-      {/* Studio Intelligence */}
-      <div className="px-6 lg:px-16 py-6">
-        <div className="rounded-xl border p-5 bg-muted/30">
-          <h2 className="text-sm font-semibold mb-2">Studio Intelligence</h2>
-          <p className="text-xs text-muted-foreground mb-4">
+      {/* Max Studio Intelligence */}
+      <div className="px-6 lg:px-16 py-8">
+        <div className="rounded-2xl border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold mb-1">
+            Max Studio Intelligence
+          </h2>
+          <p className="text-sm text-muted-foreground mb-6">
             AI-powered insights and actions across your business.
           </p>
 
-          <button
-            disabled={loading}
-            onClick={() => {
-              if (hasData) {
-                window.open("/api/studio/documents/strategy");
-              } else {
-                window.location.href = "/courses";
-              }
-            }}
-            className="text-xs px-3 py-2 rounded-md bg-black text-white disabled:opacity-50"
-          >
-            {loading
-              ? "Loading..."
-              : hasData
-                ? "Generate Strategy Report"
-                : "Get Started with Studio AI"}
-          </button>
+          {hasData ? (
+            <button
+              onClick={handleGenerateReport}
+              disabled={loading}
+              className="px-5 py-2.5 rounded-xl bg-black text-white text-sm font-medium hover:bg-black/90 disabled:opacity-60 transition-colors flex items-center gap-2"
+            >
+              {loading ? "Generating Report..." : "Generate Strategy Report"}
+            </button>
+          ) : (
+            <div className="space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Connect a Maxnovate product to unlock AI-powered insights,
+                automated content, and cross-platform intelligence.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {products.map((product, i) => (
+                  <Link
+                    key={i}
+                    href={product.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex flex-col gap-3 rounded-xl border border-border bg-background p-5 hover:border-primary hover:bg-primary/5 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{product.emoji}</span>
+                      <span className="font-semibold text-foreground">
+                        {product.title}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed flex-1">
+                      {product.description}
+                    </p>
+                    <span className="text-sm text-primary font-medium group-hover:underline inline-flex items-center gap-1">
+                      {product.label} →
+                    </span>
+                  </Link>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground pt-2">
+                Already connected?{" "}
+                <button
+                  onClick={() => window.location.reload()}
+                  className="underline hover:text-foreground transition-colors"
+                >
+                  Refresh to load your data
+                </button>
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Feature grid */}
-      <div className="flex-1 p-6 lg:p-16">
+      {/* Feature Grid */}
+      <div className="flex-1 px-6 lg:px-16 pb-12">
         <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-6">
           Tools for your content creation and workflow automation. Click any
           tool to get started.
         </p>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
             <Link
               key={feature.href}
               href={feature.href}
-              className="group relative flex flex-col gap-3 rounded-xl border border-border bg-background p-5 hover:border-foreground/20 hover:shadow-sm transition-all duration-200"
+              className="group relative flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 hover:border-foreground/30 hover:shadow transition-all duration-200"
             >
               <div
-                className={`inline-flex w-fit items-center justify-center rounded-lg border p-2 ${feature.accent}`}
+                className={`inline-flex w-fit items-center justify-center rounded-xl border p-3 ${feature.accent}`}
               >
-                <feature.icon className="size-4" />
+                <feature.icon className="size-5" />
               </div>
-              <div className="flex-1 space-y-1.5">
-                <h2 className="text-sm font-semibold tracking-tight text-foreground">
+
+              <div className="space-y-2">
+                <h3 className="font-semibold text-foreground tracking-tight">
                   {feature.title}
-                </h2>
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {feature.description}
                 </p>
               </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                Open
-                <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+
+              <div className="mt-auto flex items-center gap-1.5 text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                Open tool
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
               </div>
             </Link>
           ))}
