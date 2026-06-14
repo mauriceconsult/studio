@@ -33,20 +33,46 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({ script: video.script }),
   });
 
-  if (!res.ok) {
+  // Read body once, attempt JSON parse regardless of status
+  const rawText = await res.text();
+  let payload: { jobId?: string } = {};
+  try {
+    payload = JSON.parse(rawText);
+  } catch {
+    // INSTASKUL returned HTML — log it so you can see what's happening
+    console.error(
+      "INSTASKUL non-JSON response:",
+      res.status,
+      rawText.slice(0, 300),
+    );
     await prisma.video.update({
       where: { id: video.id },
-      data: { status: "error", errorMessage: "Failed to dispatch render job" },
+      data: {
+        status: "error",
+        errorMessage: `Render service error: ${res.status}`,
+      },
+    });
+    return Response.json(
+      { error: "Render service returned invalid response", status: res.status },
+      { status: 502 },
+    );
+  }
+
+  if (!res.ok || !payload.jobId) {
+    await prisma.video.update({
+      where: { id: video.id },
+      data: {
+        status: "error",
+        errorMessage: payload?.jobId ?? "Dispatch failed",
+      },
     });
     return Response.json({ error: "Dispatch failed" }, { status: 502 });
   }
 
-  const { jobId } = await res.json();
-
   await prisma.video.update({
     where: { id: video.id },
-    data: { status: "processing", externalJobId: jobId },
+    data: { status: "processing", externalJobId: payload.jobId },
   });
 
-  return Response.json({ videoId: video.id, jobId });
+  return Response.json({ videoId: video.id, jobId: payload.jobId });
 }

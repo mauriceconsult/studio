@@ -108,7 +108,7 @@ export function DashboardView() {
         <HeroPattern />
         <div className="relative px-6 py-12 lg:px-16 lg:py-20 max-w-3xl">
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">
-            AI Studio
+            Max AI Studio
           </p>
           <h1 className="text-3xl lg:text-4xl font-semibold tracking-tight text-foreground leading-tight mb-4">
             Create faster,{" "}
@@ -117,7 +117,7 @@ export function DashboardView() {
             </span>
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">
-            Studio brings together AI-powered text, voice, image, video, and
+            Max AI Studio brings together AI-powered text, voice, image, video, and
             course generation — for journalists chasing deadlines, educators
             building courses, and creators who need great content fast.
           </p>
@@ -128,7 +128,7 @@ export function DashboardView() {
       <div className="px-6 lg:px-16 py-8">
         <div className="rounded-2xl border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-1">
-            Max Studio Intelligence
+            Max AI Studio Intelligence
           </h2>
           <p className="text-sm text-muted-foreground mb-6">
             AI-powered insights and actions across your business.
