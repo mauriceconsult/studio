@@ -1,145 +1,29 @@
-/**
- * app/api/webhooks/momo/route.ts
- *
- * Receives MoMo payment status callbacks.
- * Handles two flows:
- *   1. Plan subscription activation (referenceId tied to a plan payment)
- *   2. PAYG top-up credit (referenceId tied to a MomoTopUp record)
- */
+import { NextResponse } from "next/server";
 
-import { prisma } from "@/lib/db";
-import {
-  PLAN_INCLUDED,
-  type PlanId,
-  type MeterEvent,
-} from "@/lib/billing/market";
+import { handleStudio } from "@/lib/payments/handlers/studio";
+import { MoMoWebhookPayload } from "@/lib/payments/momo";
 
-const PLAN_DURATION_DAYS = 30;
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  try {
+    const payload =
+      (await req.json()) as MoMoWebhookPayload;
 
-  // MoMo webhook payload shape (adjust to your provider's actual format)
-  const { referenceId, status } = body as {
-    referenceId: string;
-    status: "SUCCESSFUL" | "FAILED" | "CANCELLED";
-    reason?: string;
-  };
+    await handleStudio(payload);
 
-  if (status !== "SUCCESSFUL") {
-    // Mark top-up as failed if applicable
-    await prisma.momoTopUp.updateMany({
-      where: { referenceId, status: "pending" },
-      data: { status: "failed" },
+    return NextResponse.json({
+      received: true,
     });
-    return Response.json({ received: true });
-  }
+  } catch (error) {
+    console.error("[MOMO_WEBHOOK]", error);
 
-  // ── Flow 1: PAYG top-up ───────────────────────────────────────────────────
-  const topUp = await prisma.momoTopUp.findFirst({
-    where: { referenceId, status: "pending" },
-  });
-
-  if (topUp) {
-    await prisma.momoTopUp.update({
-      where: { id: topUp.id },
-      data: { status: "successful" },
-    });
-
-    const fieldMap: Record<MeterEvent, string> = {
-      video_minutes: "minutesRemaining",
-      characters_synthesized: "charsRemaining",
-      voices_cloned: "voicesRemaining",
-    };
-
-    const field = fieldMap[topUp.meter as MeterEvent];
-
-    await prisma.momoCredits.update({
-      where: { orgId: topUp.orgId },
-      data: { [field]: { increment: topUp.quantity } },
-    });
-
-    // Resume paused job if tied to this top-up.
-    // jobId may point to either a Course or a Video — try both.
-    if (topUp.jobId) {
-      const [course, video] = await Promise.all([
-        prisma.course.findUnique({ where: { id: topUp.jobId } }),
-        prisma.video.findUnique({ where: { id: topUp.jobId } }),
-      ]);
-
-      if (course) {
-        await prisma.course.update({
-          where: { id: topUp.jobId },
-          data: { status: "pending" },
-        });
-      } else if (video) {
-        await prisma.video.update({
-          where: { id: topUp.jobId },
-          data: { status: "pending" },
-        });
-      } else {
-        console.warn("[momo-webhook] jobId not found in Course or Video:", topUp.jobId);
+    return NextResponse.json(
+      {
+        received: false,
+      },
+      {
+        status: 500,
       }
-    }
-
-    return Response.json({ received: true, flow: "topup" });
+    );
   }
-
-  // ── Flow 2: Plan subscription activation ──────────────────────────────────
-  const sub = await prisma.momoSubscription.findFirst({
-    where: { referenceId, status: { not: "active" } },
-  });
-
-  if (sub) {
-    const plan = sub.plan as PlanId;
-    const included = PLAN_INCLUDED[plan];
-    const now = new Date();
-
-    await prisma.momoSubscription.update({
-      where: { id: sub.id },
-      data: {
-        status: "active",
-        expiresAt: addDays(now, PLAN_DURATION_DAYS),
-      },
-    });
-
-    // Upsert credits — reset included units for the new billing period
-    await prisma.momoCredits.upsert({
-      where: { orgId: sub.orgId },
-      update: {
-        minutesRemaining:
-          included.video_minutes === Infinity ? 999_999 : included.video_minutes,
-        charsRemaining:
-          included.characters_synthesized === Infinity
-            ? 999_999_999
-            : included.characters_synthesized,
-        voicesRemaining:
-          included.voices_cloned === Infinity ? 999_999 : included.voices_cloned,
-      },
-      create: {
-        orgId: sub.orgId,
-        subscriptionId: sub.id,
-        minutesRemaining:
-          included.video_minutes === Infinity ? 999_999 : included.video_minutes,
-        charsRemaining:
-          included.characters_synthesized === Infinity
-            ? 999_999_999
-            : included.characters_synthesized,
-        voicesRemaining:
-          included.voices_cloned === Infinity ? 999_999 : included.voices_cloned,
-      },
-    });
-
-    return Response.json({ received: true, flow: "subscription" });
-  }
-
-  // Unknown referenceId — log and acknowledge
-  console.warn("[momo-webhook] Unmatched referenceId:", referenceId);
-  return Response.json({ received: true, flow: "unknown" });
 }
