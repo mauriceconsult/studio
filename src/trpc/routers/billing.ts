@@ -77,6 +77,122 @@ function aggregatePolarMeters(subs: PolarActiveSub[]): number {
     for (const meter of sub.meters ?? []) cents += meter.amount ?? 0;
   return cents;
 }
+// lib/billing.ts
+
+export type BillingRegion =
+  | "uganda"
+  | "international";
+
+export type BillingStrategy =
+  | "credits"
+  | "subscription";
+
+export type CheckoutProvider =
+  | "momo"
+  | "polar";
+
+export interface BillingConfig {
+  region: BillingRegion;
+
+  strategy: BillingStrategy;
+
+  checkoutProvider: CheckoutProvider;
+
+  currency: string;
+
+  momoEnabled: boolean;
+  polarEnabled: boolean;
+
+  showCredits: boolean;
+  showSubscriptions: boolean;
+}
+
+const DEFAULT_REGION: BillingRegion =
+  process.env.NEXT_PUBLIC_BILLING_REGION === "international"
+    ? "international"
+    : "uganda";
+
+/**
+ * Returns the billing configuration for a region.
+ *
+ * Today:
+ *   Uganda        -> MTN MoMo Credits
+ *   International -> Polar Subscription
+ *
+ * Later this can become organization-aware:
+ *
+ * getBillingConfig(shop.country)
+ */
+export function getBillingConfig(
+  region: BillingRegion = DEFAULT_REGION,
+): BillingConfig {
+  switch (region) {
+    case "uganda":
+      return {
+        region,
+
+        strategy: "credits",
+
+        checkoutProvider: "momo",
+
+        currency: "UGX",
+
+        momoEnabled: true,
+        polarEnabled: false,
+
+        showCredits: true,
+        showSubscriptions: false,
+      };
+
+    case "international":
+      return {
+        region,
+
+        strategy: "subscription",
+
+        checkoutProvider: "polar",
+
+        currency: "USD",
+
+        momoEnabled: false,
+        polarEnabled: true,
+
+        showCredits: false,
+        showSubscriptions: true,
+      };
+  }
+}
+
+/**
+ * Default application billing configuration.
+ *
+ * Most UI components can simply:
+ *
+ * import { billing } from "@/lib/billing";
+ */
+export const billing = getBillingConfig();
+
+/* -------------------------------------------------------------------------- */
+/* Convenience helpers                                                        */
+/* -------------------------------------------------------------------------- */
+
+export const isUganda =
+  billing.region === "uganda";
+
+export const isInternational =
+  billing.region === "international";
+
+export const usesCredits =
+  billing.strategy === "credits";
+
+export const usesSubscriptions =
+  billing.strategy === "subscription";
+
+export const checkoutProvider =
+  billing.checkoutProvider;
+
+export const currency =
+  billing.currency;
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 

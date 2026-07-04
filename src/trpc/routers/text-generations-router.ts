@@ -5,27 +5,8 @@ import { env } from "@/lib/env";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
 import { createTRPCRouter, orgProcedure } from "../init";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const GENERATION_TYPES = [
-  "description",  // beat or article standfirst
-  "headline",     // article headline suggestions
-  "script",       // video/podcast script
-  "captions",     // gallery image captions
-  "body",         // full article body copy
-] as const;
-
-type TextGenerationType = (typeof GENERATION_TYPES)[number];
-
-// Max input prompt length per type — prevents abuse, keeps costs predictable
-const PROMPT_MAX: Record<TextGenerationType, number> = {
-  description: 500,
-  headline:    300,
-  script:      2000,
-  captions:    800,
-  body:        1000,
-};
+import { ai } from "@/lib/ai";
+import { GENERATION_TYPES, PROMPT_MAX, TextGenerationType } from "@/lib/ai-types";
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 
@@ -144,14 +125,14 @@ if (
         });
 
         // ── Placeholder: call your LLM here (Anthropic, OpenAI, etc.) ─────────
-        // const response = await anthropic.messages.create({
-        //   model:      "claude-opus-4-6",
-        //   max_tokens: maxOutputTokens(input.type),
-        //   system:     systemPrompt(input.type),
-        //   messages:   [{ role: "user", content: input.prompt }],
-        // });
-        // output     = response.content[0].type === "text" ? response.content[0].text : null;
-        // tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+   const response = await ai.generateText({
+     type: input.type,
+     prompt: input.prompt,
+   });
+
+   output = response.output;
+
+   tokensUsed = response.totalTokens;
         // ── End placeholder ───────────────────────────────────────────────────
 
         await prisma.textGeneration.update({

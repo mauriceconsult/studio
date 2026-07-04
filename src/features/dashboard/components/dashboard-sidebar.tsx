@@ -34,6 +34,7 @@ import {
 import Link from "next/link";
 import { UsageContainer } from "@/features/billing/components/usage-container";
 
+
 interface MenuItem {
   title: string;
   url?: string;
@@ -121,7 +122,7 @@ export function DashboardSidebar() {
     },
     {
       title: "Help and support",
-      url: "mailto:business@maxnovate.com",
+      url: "mailto:support@instaskul.com",
       icon: Headphones,
     },
   ];
@@ -193,10 +194,10 @@ export function DashboardSidebar() {
           limit={10000}
           region="uganda"
           onTopUp={() => {
-            // Open MoMo checkout
+            // launch MoMo checkout
           }}
           onUpgrade={() => {
-            // Future international subscriptions
+            // launch Polar checkout
           }}
         />
 
