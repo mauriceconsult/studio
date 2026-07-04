@@ -15,7 +15,7 @@ export default function OrgSelectionPage() {
           Set up your workspace
         </h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Studio AI uses workspaces (organisations) to manage your projects
+          Max AI Studio uses workspaces (organisations) to manage your projects
           and team. Create one to get started — it only takes a few seconds.
         </p>
       </div>

@@ -324,3 +324,12 @@ model TextGeneration {
   @@map("text_generations")
 }
 
+// model Billing {
+//   id          String   @id @default(cuid())
+//   orgId       String
+//   meter       String   // "videos_generated" | "characters_synthesized" | "voices_cloned"
+//   usageCount  Int      @default(0)
+//   updatedAt   DateTime @updatedAt
+
+//   @@unique([orgId, meter])
+// }
