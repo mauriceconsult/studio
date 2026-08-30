@@ -1,4 +1,3 @@
-// src/lib/billing/momo.ts
 import { env } from "@/lib/env";
 
 const MOMO_BASE_URL =  env.MOMO_BASE_URL || "https://sandbox.momodeveloper.mtn.com";
