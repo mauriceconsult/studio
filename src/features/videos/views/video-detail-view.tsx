@@ -1,6 +1,6 @@
 "use client";
 
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { VideoScriptPanel } from "../components/video-script-panel";
 import { VideoPlayerPanel } from "../components/video-player-panel";
@@ -8,9 +8,14 @@ import { VideoSettingsPanel } from "../components/video-settings-panel";
 
 export function VideoDetailView({ videoId }: { videoId: string }) {
   const trpc = useTRPC();
-  const { data: video } = useSuspenseQuery(
-    trpc.videos.getById.queryOptions({ id: videoId })
-  );
+  const {
+    data: video,
+    isLoading,
+    error,
+  } = useQuery(trpc.videos.getById.queryOptions({ id: videoId }));
+
+  if (isLoading) return <div>Loading video...</div>;
+  if (error || !video) return <div>Failed to load video.</div>;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
