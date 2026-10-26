@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTRPC } from "@/trpc/client";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Mode = "speech" | "course" | "video" | "text" | "image";
 
@@ -32,6 +32,7 @@ function deriveTitle(script: string): string {
 export function TextInputPanel() {
   const router = useRouter();
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   const [mode, setMode] = useState<Mode>("speech");
   const [script, setScript] = useState("");
@@ -73,6 +74,20 @@ export function TextInputPanel() {
    }
 
    if (mode === "image") {
+     const quote = await queryClient.fetchQuery(
+       trpc.pricing.quoteImage.queryOptions({
+         count: 1,
+         width: 1920,
+         height: 1080,
+       }),
+     );
+     const price =
+       quote.rail === "momo"
+         ? `${quote.priceUgx.toLocaleString()} UGX`
+         : `$${quote.priceUsd.toFixed(2)}`;
+     if (!window.confirm(`Estimated image generation price: ${price}. Continue?`)) {
+       return;
+     }
      const image = await createImage.mutateAsync({
        prompt: script.trim(),
      });

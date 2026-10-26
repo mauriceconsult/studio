@@ -23,6 +23,32 @@ export const env = createEnv({
     R2_SECRET_ACCESS_KEY: z.string().min(1),
     R2_BUCKET_NAME: z.string().min(1),
     R2_ENDPOINT_URL: z.string().url(), // ← added
+    FAL_KEY: z.string().min(1),
+    SONG_WEBHOOK_SECRET: z.string().min(32),
+    SONG_FAL_MODEL: z.string().min(1).default("fal-ai/ace-step-1.5"),
+    CLIP_WEBHOOK_SECRET: z.string().min(32),
+    CLIP_FAL_T2V_MODEL: z
+      .string()
+      .min(1)
+      .default("fal-ai/wan/v2.2-a14b/text-to-video"),
+    CLIP_FAL_I2V_MODEL: z
+      .string()
+      .min(1)
+      .default("fal-ai/wan/v2.2-a14b/image-to-video"),
+    CLIP_FAL_RESOLUTION: z.enum(["480p", "580p", "720p"]).default("480p"),
+    CLIP_FAL_PRICE_PER_SECOND_480P: z.coerce.number().positive().default(0.04),
+    CLIP_FAL_PRICE_PER_SECOND_580P: z.coerce.number().positive().default(0.06),
+    CLIP_FAL_PRICE_PER_SECOND_720P: z.coerce.number().positive().default(0.08),
+    STILL_FAL_MODEL: z.string().min(1).default("fal-ai/flux/schnell"),
+    PRICING_USD_UGX: z.coerce.number().positive().default(5000),
+    PRICING_MOMO_PAYMENT_FEE: z.coerce.number().min(0).max(0.99).default(0.03),
+    PRICING_POLAR_PAYMENT_FEE: z.coerce.number().min(0).max(0.99).default(0.04),
+    PRICING_SONG_COST_PER_SECOND_USD: z.coerce.number().positive().default(0.0003),
+    PRICING_IMAGE_COST_PER_MEGAPIXEL_USD: z.coerce.number().positive().default(0.003),
+    PRICING_SONG_MULTIPLE: z.coerce.number().positive().default(3),
+    PRICING_IMAGE_MULTIPLE: z.coerce.number().positive().default(3),
+    PRICING_CLIP_MULTIPLE: z.coerce.number().positive().default(2),
+    PRICING_POLAR_MIN_PURCHASE_USD: z.coerce.number().positive().default(10),
 
     // ── Chatterbox (TTS engine — existing) ────────────────────────────────────
     CHATTERBOX_API_URL: z.string().url(),

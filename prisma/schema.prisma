@@ -38,6 +38,7 @@ enum OutputFormat {
   MP3_44100
   WAV
   PCM_16000
+  FLAC          // new
 }
 
 model Voice {
@@ -55,6 +56,7 @@ model Voice {
   previewUrl  String?
 
   generations Generation[]
+  songGenerations SongGeneration[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -133,6 +135,15 @@ model UsageRecord {
   textGenerationId  String?          @unique
   textGeneration    TextGeneration?  @relation(fields: [textGenerationId], references: [id])
 
+  lyricsGenerationId String?           @unique
+  lyricsGeneration   LyricsGeneration? @relation(fields: [lyricsGenerationId], references: [id])
+
+  songGenerationId String?          @unique
+  songGeneration   SongGeneration?  @relation(fields: [songGenerationId], references: [id])
+
+  videoClipGenerationId String?            @unique
+  videoClipGeneration   VideoClipGeneration? @relation(fields: [videoClipGenerationId], references: [id])
+
   // ── Consumed units (what was charged) ─────────────────────────────────────
   // Set the relevant field, leave others null.
   // Keeps per-type metering separate so billing stays clean.
@@ -140,7 +151,11 @@ model UsageRecord {
   charactersUsed Int?    // TTS: characters synthesised
   imagesUsed     Int?    // Image: number of images generated (usually 1)
   tokensUsed     Int?    // Text: LLM tokens consumed
-
+  lyricsUsed     Int?    // Lyrics: number of lyrics generated
+  audioSecondsUsed Int?
+  videoSecondsUsed Int?
+  costMicroUsd Int?
+  chargedUgx   Int?
   createdAt DateTime @default(now())
 
   @@index([orgId])
@@ -279,15 +294,21 @@ model ImageGeneration {
   prompt         String           @db.Text
   style          String?
   outputUrl      String?
-  width          Int              @default(1200)
-  height         Int              @default(630)
+  width          Int              @default(1920)
+  height         Int              @default(1080)
   status         GenerationStatus @default(PENDING)
   errorMessage   String?
-  sourceApp      String           @default("zuriah")
+  costMicroUsd   Int?
+  costUgx        Int?
+  priceUgx       Int?
+  priceUsdCents  Int?
+  pricingRail    String?
+  sourceApp      String           @default("studio")
   sourceEntityId String?
 
   // Back-relation — owned by UsageRecord
   usageRecord    UsageRecord?
+  asset          MediaAsset?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -324,12 +345,282 @@ model TextGeneration {
   @@map("text_generations")
 }
 
-// model Billing {
-//   id          String   @id @default(cuid())
-//   orgId       String
-//   meter       String   // "videos_generated" | "characters_synthesized" | "voices_cloned"
-//   usageCount  Int      @default(0)
-//   updatedAt   DateTime @updatedAt
+enum SongStructureSection {
+  VERSE
+  CHORUS
+  BRIDGE
+  PRE_CHORUS
+  OUTRO
+  INTRO
+  HOOK
+}
 
-//   @@unique([orgId, meter])
-// }
+model LyricsGeneration {
+  id             String @id @default(cuid())
+  orgId          String
+  platformUserId String? // which end-user triggered this, if known — matches ImageGeneration/TextGeneration
+
+  // ── Creative brief ──────────────────────────────────────────────────────
+  prompt   String  @db.Text // theme/brief the user gave
+  genre    String? // e.g. "afrobeat", "pop", "gospel" — free text, not enum: genres aren't a fixed set
+  mood     String? // e.g. "upbeat", "melancholic"
+  language String  @default("en")
+
+  // Loose target metadata for future instrumental alignment — nullable, filled only if the user specifies
+  targetTempoBpm   Int?
+  targetDurationMs Int?
+
+  // ── Output ──────────────────────────────────────────────────────────────
+  lyrics String? @db.Text // full generated lyrics, section-labelled inline (e.g. "[Verse 1]\n...")
+
+  // Generation settings — same shape as Generation's TTS settings, for consistency
+  temperature Float?
+  topP        Float?
+
+  status       GenerationStatus @default(PENDING)
+  errorMessage String?
+
+  // Cross-product provenance — same pattern as ImageGeneration/TextGeneration
+  sourceApp      String  @default("studio")
+  sourceEntityId String?
+
+  usageRecord UsageRecord?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([orgId])
+  @@index([platformUserId])
+  @@index([status])
+  @@map("lyrics_generations")
+}
+
+model SongGeneration {
+  id             String  @id @default(cuid())
+  orgId          String
+  platformUserId String?
+  seed Int?     // new: lets "regenerate this exact take" work later
+
+  // Input
+  lyrics                String  @db.Text // user-written, with [Verse]/[Chorus] tags
+  stylePrompt           String? @db.Text // genre / mood / instrumentation
+  language              String  @default("en")
+  tempoBpm              Int?
+  targetDurationSeconds Int?
+
+  // Voice (persona for phase 1)
+  voiceId    String?
+  voice      Voice?  @relation(fields: [voiceId], references: [id], onDelete: SetNull)
+  voiceName  String? // snapshot, same convention as Generation
+  vocalStyle String? // what actually went into the prompt
+
+  // Provider job
+  provider      String  // "ace-step" | "minimax" | ...
+  providerJobId String?
+
+  // Output
+  outputFormat    OutputFormat @default(MP3_44100)
+  r2ObjectKey     String?
+  durationSeconds Float?
+  fileSize        Int?
+  costMicroUsd    Int?
+  costUgx         Int?
+  priceUgx        Int?
+  priceUsdCents   Int?
+  pricingRail     String?
+
+  status       GenerationStatus @default(PENDING)
+  errorMessage String?
+
+  sourceApp      String  @default("studio")
+  sourceEntityId String?
+
+  usageRecord UsageRecord?
+  outputAsset MediaAsset? @relation("SongOutput")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([orgId])
+  @@index([orgId, createdAt])
+  @@index([status])
+  @@index([providerJobId])
+  @@map("song_generations")
+}
+
+enum AssetKind {
+  AUDIO
+  IMAGE
+  VIDEO
+}
+
+enum AssetOrigin {
+  UPLOADED
+  AI_GENERATED
+}
+
+enum SceneSource {
+  AI_VIDEO
+  AI_IMAGE
+  USER_VIDEO
+  USER_IMAGE
+}
+
+enum ProjectStatus {
+  DRAFT
+  RENDERING
+  COMPLETED
+  FAILED
+}
+
+model MediaAsset {
+  id             String      @id @default(cuid())
+  orgId          String
+  platformUserId String?
+
+  kind        AssetKind
+  origin      AssetOrigin
+  name        String?
+  r2ObjectKey String
+  mimeType    String
+  fileSize    Int?
+  durationMs  Int?          // audio/video
+  width       Int?
+  height      Int?
+
+  // Provenance, set only when origin = AI_GENERATED
+  songGenerationId String?             @unique
+  songGeneration   SongGeneration?     @relation("SongOutput", fields: [songGenerationId], references: [id], onDelete: SetNull)
+  imageGenerationId String?            @unique
+  imageGeneration   ImageGeneration?   @relation(fields: [imageGenerationId], references: [id], onDelete: SetNull)
+  videoClipGenerationId String?        @unique
+  videoClipGeneration   VideoClipGeneration? @relation("ClipOutput", fields: [videoClipGenerationId], references: [id], onDelete: SetNull)
+
+  usedAsAudioIn   MusicVideo[]          @relation("VideoAudio")
+  usedInScenes    MusicVideoScene[]     @relation("SceneVisual")
+  usedAsReference VideoClipGeneration[] @relation("ClipReference")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([orgId, kind])
+  @@index([orgId, createdAt])
+  @@map("media_assets")
+}
+
+// One AI text-to-video or image-to-video job, shaped like SongGeneration
+model VideoClipGeneration {
+  id             String @id @default(cuid())
+  orgId          String
+  platformUserId String?
+
+  prompt           String  @db.Text
+  referenceAssetId String?               // set = image-to-video from a user photo or AI still
+  referenceAsset   MediaAsset? @relation("ClipReference", fields: [referenceAssetId], references: [id], onDelete: SetNull)
+  aspectRatio      String  @default("16:9")
+  durationSeconds  Int
+  seed             Int?
+
+  provider      String
+  providerJobId String?
+  billingCostUgx Int?
+  resolution     String @default("480p")
+  costMicroUsd   Int?
+  costUgx        Int?
+  priceUgx       Int?
+  priceUsdCents  Int?
+  pricingRail    String?
+
+  outputAsset  MediaAsset? @relation("ClipOutput")
+  usageRecord  UsageRecord?
+
+  status       GenerationStatus @default(PENDING)
+  errorMessage String?
+  sourceApp      String @default("studio")
+  sourceEntityId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scenes MusicVideoScene[]
+
+  @@index([orgId, createdAt])
+  @@index([status])
+  @@index([providerJobId])
+  @@map("video_clip_generations")
+}
+
+model MusicVideo {
+  id             String @id @default(cuid())
+  orgId          String
+  platformUserId String?
+
+  title        String
+  audioAssetId String
+  audioAsset   MediaAsset @relation("VideoAudio", fields: [audioAssetId], references: [id])
+  lyrics       String?    @db.Text   // for captions and scene splitting
+  visualStyle  String?    @db.Text
+  characters   Json?
+  aspectRatio  String     @default("16:9")
+  status       ProjectStatus @default(DRAFT)
+
+  scenes  MusicVideoScene[]
+  renders VideoRender[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([orgId, createdAt])
+  @@map("music_videos")
+}
+
+model MusicVideoScene {
+  id           String @id @default(cuid())
+  musicVideoId String
+  musicVideo   MusicVideo @relation(fields: [musicVideoId], references: [id], onDelete: Cascade)
+
+  position Int
+  startMs  Int
+  endMs    Int
+
+  section      SongStructureSection?   // enum already exists, currently unused
+  lyricsText   String? @db.Text
+  visualPrompt String? @db.Text
+
+  source SceneSource
+  assetId String?
+  asset   MediaAsset? @relation("SceneVisual", fields: [assetId], references: [id], onDelete: SetNull)
+  clipGenerationId String?
+  clipGeneration   VideoClipGeneration? @relation(fields: [clipGenerationId], references: [id], onDelete: SetNull)
+
+  motion     String?   // stills: "zoom_in" | "pan_left" ...
+  transition String?
+  status     GenerationStatus @default(COMPLETED)  // PENDING while an AI visual is generating
+
+  @@unique([musicVideoId, position])
+  @@map("music_video_scenes")
+}
+
+model VideoRender {
+  id           String @id @default(cuid())
+  musicVideoId String
+  musicVideo   MusicVideo @relation(fields: [musicVideoId], references: [id], onDelete: Cascade)
+
+  timeline        Json    // frozen scene list at render time, so re-renders are reproducible
+  resolution      String  @default("1080p")
+  r2ObjectKey     String?
+  durationSeconds Float?
+  fileSize        Int?
+
+  status       GenerationStatus @default(PENDING)
+  errorMessage String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([musicVideoId])
+  @@map("video_renders")
+}

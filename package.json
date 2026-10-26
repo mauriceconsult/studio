@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
+    "worker:music-video": "tsx scripts/music-video-worker.ts",
     "lint": "eslint",
     "sync-api": "tsx scripts/sync-api.ts"
   },
@@ -21,6 +22,7 @@
     "@clerk/nextjs": "^7.0.4",
     "@dicebear/collection": "^9.4.2",
     "@dicebear/core": "^9.4.2",
+    "@fal-ai/client": "^1.10.1",
     "@hookform/resolvers": "^5.2.2",
     "@polar-sh/sdk": "^0.46.7",
     "@sentry/nextjs": "^10.46.0",

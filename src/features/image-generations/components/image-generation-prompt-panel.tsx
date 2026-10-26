@@ -58,8 +58,22 @@ export function ImageGenerationPromptPanel({
     })
   );
 
-  function handleRegenerate() {
+  async function handleRegenerate() {
     const size = IMAGE_SIZES.find((s) => s.value === sizeValue)!;
+    const quote = await queryClient.fetchQuery(
+      trpc.pricing.quoteImage.queryOptions({
+        count: 1,
+        width: size.width,
+        height: size.height,
+      }),
+    );
+    const price =
+      quote.rail === "momo"
+        ? `${quote.priceUgx.toLocaleString()} UGX`
+        : `$${quote.priceUsd.toFixed(2)}`;
+    if (!window.confirm(`Estimated image generation price: ${price}. Continue?`)) {
+      return;
+    }
     regenerate({
       prompt: prompt.trim(),
       style,

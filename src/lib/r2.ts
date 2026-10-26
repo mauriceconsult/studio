@@ -16,17 +16,17 @@ const r2 = new S3Client({
   },
 });
 
-type UploadAudioOptions = {
+type UploadObjectOptions = {
   buffer: Buffer;
   key: string;
-  contentType?: string;
+  contentType: string;
 };
 
-export async function uploadAudio({
+export async function uploadObject({
   buffer,
   key,
-  contentType = "audio/wav",
-}: UploadAudioOptions): Promise<void> {
+  contentType,
+}: UploadObjectOptions): Promise<void> {
   await r2.send(
     new PutObjectCommand({
       Bucket: env.R2_BUCKET_NAME,
@@ -37,7 +37,15 @@ export async function uploadAudio({
   );
 }
 
-export async function deleteAudio(key: string): Promise<void> {
+export async function uploadAudio({
+  buffer,
+  key,
+  contentType = "audio/wav",
+}: Omit<UploadObjectOptions, "contentType"> & { contentType?: string }): Promise<void> {
+  await uploadObject({ buffer, key, contentType });
+}
+
+export async function deleteObject(key: string): Promise<void> {
   await r2.send(
     new DeleteObjectCommand({
       Bucket: env.R2_BUCKET_NAME,
@@ -46,10 +54,18 @@ export async function deleteAudio(key: string): Promise<void> {
   );
 }
 
-export async function getSignedAudioUrl(key: string): Promise<string> {
+export async function deleteAudio(key: string): Promise<void> {
+  await deleteObject(key);
+}
+
+export async function signedUrl(key: string): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: env.R2_BUCKET_NAME,
     Key: key,
   });
   return getSignedUrl(r2, command, { expiresIn: 3600 }); // 1 hour
+}
+
+export async function getSignedAudioUrl(key: string): Promise<string> {
+  return signedUrl(key);
 }

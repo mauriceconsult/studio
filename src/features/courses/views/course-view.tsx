@@ -13,18 +13,17 @@ interface CourseViewProps {
 export function CourseView({ courseId }: CourseViewProps) {
   const trpc = useTRPC();
   const router = useRouter();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dispatchedRef = useRef(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   const { data: course, refetch } = useQuery(
     trpc.courses.getById.queryOptions({ id: courseId })
   );
+  const status = course?.status;
 
   // Dispatch to PLATFORM_API once on mount if still pending
   useEffect(() => {
-    if (!course || dispatchedRef.current) return;
-    if (course.status !== "pending") return;
+    if (status !== "pending" || dispatchedRef.current) return;
 
     dispatchedRef.current = true;
 
@@ -38,20 +37,14 @@ export function CourseView({ courseId }: CourseViewProps) {
         else refetch();
       })
       .catch(() => setDispatchError("Network error. Please try again."));
-  }, [course?.status]);
+  }, [courseId, refetch, status]);
 
   // Poll while processing
   useEffect(() => {
-    if (!course) return;
-    if (course.status === "processing" || course.status === "pending") {
-      intervalRef.current = setInterval(() => refetch(), 2000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [course?.status]);
+    if (status !== "processing" && status !== "pending") return;
+    const interval = setInterval(() => refetch(), 2000);
+    return () => clearInterval(interval);
+  }, [refetch, status]);
 
   if (!course) {
     return (

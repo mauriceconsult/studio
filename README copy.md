@@ -115,6 +115,64 @@ MOMO_API_KEY=
 
 # App
 APP_URL=http://localhost:3000
+
+# Fal song generation (APP_URL must be publicly reachable over HTTPS for webhooks)
+FAL_KEY=
+SONG_WEBHOOK_SECRET=
+SONG_FAL_MODEL=fal-ai/ace-step-1.5
+
+# Fal music-video clips
+CLIP_WEBHOOK_SECRET=
+CLIP_FAL_T2V_MODEL=fal-ai/wan/v2.2-a14b/text-to-video
+CLIP_FAL_I2V_MODEL=fal-ai/wan/v2.2-a14b/image-to-video
+CLIP_FAL_RESOLUTION=480p
+CLIP_FAL_PRICE_PER_SECOND_480P=0.04
+CLIP_FAL_PRICE_PER_SECOND_580P=0.06
+CLIP_FAL_PRICE_PER_SECOND_720P=0.08
+STILL_FAL_MODEL=fal-ai/flux/schnell
+PRICING_USD_UGX=5000
+PRICING_MOMO_PAYMENT_FEE=0.03
+PRICING_POLAR_PAYMENT_FEE=0.04
+PRICING_SONG_COST_PER_SECOND_USD=0.0003
+PRICING_IMAGE_COST_PER_MEGAPIXEL_USD=0.003
+PRICING_SONG_MULTIPLE=3
+PRICING_IMAGE_MULTIPLE=3
+PRICING_CLIP_MULTIPLE=2
+PRICING_POLAR_MIN_PURCHASE_USD=10
+```
+
+Generation prices use the provider cost multiplied by the configured product
+multiple, grossed up for the payment rail's percentage fee. MoMo prices round
+up to the next 100 UGX. These defaults use a 5,000 UGX/USD planning rate as an
+FX buffer above the 26 Oct 2026 mid-market rate; review the exchange rate and
+payment fees monthly. The MTN fee remains a placeholder pending confirmation
+against the provider agreement. Fal FLUX.1 [schnell] is configured at $0.003
+per megapixel, rounded up to the next megapixel by the provider.
+
+Before submitting, authenticated clients can query `POST /api/quote` with type
+`song`, `image`, `clip`, or `project`; the authenticated tRPC procedures
+`pricing.quoteSong`, `pricing.quoteImage`, and `pricing.quoteClip` are also
+available. Client-facing quotes include prices, not provider costs. Quotes are
+saved on generation jobs. MoMo song and clip failures refund their stored
+quoted amount. The music-video scene image endpoint is
+`POST /api/music-videos/{id}/scenes/{sceneId}/image`. For projects with many
+scenes, submit image requests in small batches to stay within provider and
+function limits. Polar's USD minimum is a payment/top-up constraint, not an
+individual generation price.
+
+Wan 2.2 generates at 16 fps; the clip adapter derives its frame count from the
+requested duration and defaults to 480p. Fal's current listed rates are
+$0.04/video-second at 480p, $0.06 at 580p, and $0.08 at 720p, so a 5-second
+clip costs about $0.20 at the selected setting. Check the model pages for
+current prices before changing the resolution:
+
+- [Wan 2.2 text-to-video](https://fal.ai/models/fal-ai/wan/v2.2-a14b/text-to-video)
+- [Wan 2.2 image-to-video](https://fal.ai/models/fal-ai/wan/v2.2-a14b/image-to-video)
+
+Run the durable music-video render worker alongside the Next.js app:
+
+```bash
+npm run worker:music-video
 ```
 
 ---

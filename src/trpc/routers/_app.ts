@@ -6,6 +6,8 @@ import { coursesRouter } from "@/features/courses/courses-router";
 import { videosRouter } from "@/features/videos/videos-router";
 import { imageGenerationsRouter } from "./image-generations-router";
 import { textGenerationsRouter } from "./text-generations-router";
+import { lyricsRouter } from "@/features/lyrics/lyrics-router";
+import { pricingRouter } from "./pricing";
 
 
 export const appRouter = createTRPCRouter({
@@ -14,7 +16,9 @@ export const appRouter = createTRPCRouter({
   generations:      generationsRouter,      // TTS audio generation
   imageGenerations: imageGenerationsRouter, // Image generation (Zuriah covers, Instaskul thumbnails)
   textGenerations:  textGenerationsRouter,  // LLM text generation (standfirsts, headlines, scripts)
+  lyricsGenerations: lyricsRouter,
   billing:          billingRouter,
+  pricing:          pricingRouter,
 
   // ── Instaskul ───────────────────────────────────────────────────────────────
   courses: coursesRouter,

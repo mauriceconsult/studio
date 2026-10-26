@@ -10,6 +10,7 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
 import { assertActiveSubscription } from "@/lib/subscription-guard";
 import { createTRPCRouter, orgProcedure } from "../init";
+import { quoteImage } from "@/lib/pricing/quote";
 
 const ALLOWED_STYLES = [
   "photojournalistic",
@@ -23,15 +24,20 @@ export type ImageStyle = (typeof ALLOWED_STYLES)[number];
 const createImageSchema = z.object({
   prompt:         z.string().min(10).max(1000),
   style:          z.enum(ALLOWED_STYLES).default("photojournalistic"),
-  width:          z.number().int().min(512).max(2048).default(1200),
-  height:         z.number().int().min(512).max(2048).default(630),
-  sourceApp:      z.string().default("zuriah"),
+  width:          z.number().int().min(512).max(2048).optional(),
+  height:         z.number().int().min(512).max(2048).optional(),
+  aspectRatio:    z.enum(["16:9", "9:16", "1:1"]).default("16:9"),
+  sourceApp:      z.string().default("studio"),
   sourceEntityId: z.string().optional(),
   platformUserId: z.string().optional(),
 });
 
 // Shared omit — never expose orgId to the client
-const CLIENT_OMIT = { orgId: true } as const;
+const CLIENT_OMIT = {
+  orgId: true,
+  costMicroUsd: true,
+  costUgx: true,
+} as const;
 
 export const imageGenerationsRouter = createTRPCRouter({
 
@@ -86,6 +92,23 @@ export const imageGenerationsRouter = createTRPCRouter({
     .mutation(async ({ input, ctx }) => {
       // Single guard covering both Polar and MoMo users
       await assertActiveSubscription(ctx.orgId);
+      const momo = await prisma.momoCredits.findUnique({
+        where: { orgId: ctx.orgId },
+        select: { orgId: true },
+      });
+      const pricingRail = momo ? "momo" : "polar";
+      const defaultDimensions =
+        input.aspectRatio === "9:16"
+          ? { width: 1080, height: 1920 }
+          : input.aspectRatio === "1:1"
+            ? { width: 1080, height: 1080 }
+            : { width: 1920, height: 1080 };
+      const quote = quoteImage(
+        1,
+        pricingRail,
+        input.width ?? defaultDimensions.width,
+        input.height ?? defaultDimensions.height,
+      );
 
       const record = await prisma.imageGeneration.create({
         data: {
@@ -93,9 +116,14 @@ export const imageGenerationsRouter = createTRPCRouter({
           platformUserId: input.platformUserId ?? null,
           prompt:         input.prompt,
           style:          input.style,
-          width:          input.width,
-          height:         input.height,
+          width:          input.width ?? defaultDimensions.width,
+          height:         input.height ?? defaultDimensions.height,
           status:         "PENDING",
+          costMicroUsd:   quote.costMicroUsd,
+          costUgx:        quote.costUgx,
+          priceUgx:       quote.priceUgx,
+          priceUsdCents:  quote.priceUsdCents,
+          pricingRail,
           sourceApp:      input.sourceApp,
           sourceEntityId: input.sourceEntityId ?? null,
         },
@@ -132,6 +160,7 @@ export const imageGenerationsRouter = createTRPCRouter({
             orgId:             ctx.orgId,
             imageGenerationId: record.id,
             imagesUsed:        1,
+            costMicroUsd:      quote.costMicroUsd,
             month:             new Date().getMonth() + 1,
             year:              new Date().getFullYear(),
           },
@@ -173,7 +202,7 @@ export const imageGenerationsRouter = createTRPCRouter({
         })
         .catch(() => {});
 
-      return { id: record.id };
+      return { id: record.id, quote };
     }),
 
   delete: orgProcedure

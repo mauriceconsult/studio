@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,8 +69,8 @@ export function CourseCreateForm({
 
   const {
     register,
+    control,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<CourseCreateFormInput>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,7 +83,7 @@ export function CourseCreateForm({
     },
   });
 
-  const descriptionValue = watch("description");
+  const descriptionValue = useWatch({ control, name: "description" });
   const descriptionLength = descriptionValue?.length ?? 0;
 
   const { mutateAsync } = useMutation(

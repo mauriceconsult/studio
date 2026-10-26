@@ -30,6 +30,7 @@ import {
   Clapperboard,
   FileText,
   ImageIcon,
+  Music2,
 } from "lucide-react";
 import Link from "next/link";
 import { UsageContainer } from "@/features/billing/components/usage-container";
@@ -110,6 +111,7 @@ export function DashboardSidebar() {
     { title: "Text to speech",   url: "/text-to-speech",    icon: AudioLines   },
     { title: "Text generation",  url: "/text-generations",  icon: FileText     },
     { title: "Image generation", url: "/image-generations", icon: ImageIcon    },
+    { title: "Lyrics generation", url: "/lyrics-generations", icon: Music2     },
     { title: "Courses",          url: "/courses",           icon: BookOpen     },
     { title: "Videos",           url: "/videos",            icon: Clapperboard },
   ];

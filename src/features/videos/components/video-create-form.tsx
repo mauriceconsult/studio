@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -44,15 +44,15 @@ export function VideoCreateForm({
 
   const {
     register,
+    control,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<VideoCreateFormValues>({
     resolver: zodResolver(videoCreateSchema),
     defaultValues: { title: "", script: "" },
   });
 
-  const scriptValue = watch("script");
+  const scriptValue = useWatch({ control, name: "script" });
   const scriptLength = scriptValue?.length ?? 0;
 
   const { mutateAsync } = useMutation(

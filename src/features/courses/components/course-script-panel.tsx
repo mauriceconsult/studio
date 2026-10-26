@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useTRPC } from "@/trpc/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { Coins, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,37 +15,43 @@ const SCRIPT_MAX_LENGTH = 10_000;
 const COST_PER_CHAR = 0.000015;
 
 export function CourseScriptPanel({ course }: { course: Course }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const dispatchedRef = useRef(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
 
-  const isActive = course.status === "pending" || course.status === "processing";
+  const { id: courseId, status } = course;
+  const isActive = status === "pending" || status === "processing";
 
   // Auto-dispatch on mount when pending
   useEffect(() => {
-    if (!course || dispatchedRef.current || course.status !== "pending") return;
+    if (dispatchedRef.current || status !== "pending") return;
     dispatchedRef.current = true;
     fetch("/api/generate-course", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseId: course.id }),
+      body: JSON.stringify({ courseId }),
     })
       .then((res) => {
         if (!res.ok) setDispatchError("Failed to start generation.");
-        else queryClient.invalidateQueries({ queryKey: [["courses", "getById"]] });
+        else {
+          queryClient.invalidateQueries({
+            queryKey: [["courses", "getById", { id: courseId }]],
+          });
+        }
       })
       .catch(() => setDispatchError("Network error. Please try again."));
-  }, [course.status]);
+  }, [courseId, queryClient, status]);
 
   // Poll while active
   useEffect(() => {
     if (!isActive) return;
     const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: [["courses", "getById"]] });
+      queryClient.invalidateQueries({
+        queryKey: [["courses", "getById", { id: courseId }]],
+      });
     }, 2000);
     return () => clearInterval(interval);
-  }, [isActive]);
+  }, [courseId, isActive, queryClient]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

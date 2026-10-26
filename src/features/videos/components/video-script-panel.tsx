@@ -19,45 +19,42 @@ export function VideoScriptPanel({ video }: { video: Video }) {
   const dispatchedRef = useRef(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
 
-  if (!video) return null;
-
-  const isActive =
-    video.status === "pending" || video.status === "processing";
-
+  const { id: videoId, status } = video;
+  const isActive = status === "pending" || status === "processing";
   const scriptLength = video.script.length;
 
   useEffect(() => {
-    if (dispatchedRef.current || video.status !== "pending") return;
+    if (dispatchedRef.current || status !== "pending") return;
 
     dispatchedRef.current = true;
 
     fetch("/api/generate-video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId: video.id }),
+      body: JSON.stringify({ videoId }),
     })
       .then((res) => {
         if (!res.ok) setDispatchError("Failed to start render.");
         else {
           queryClient.invalidateQueries({
-            queryKey: [["videos", "getById", { id: video.id }]],
+            queryKey: [["videos", "getById", { id: videoId }]],
           });
         }
       })
       .catch(() => setDispatchError("Network error. Please try again."));
-  }, [video.id, video.status, queryClient]);
+  }, [queryClient, status, videoId]);
 
   useEffect(() => {
     if (!isActive) return;
 
     const interval = setInterval(() => {
       queryClient.invalidateQueries({
-        queryKey: [["videos", "getById", { id: video.id }]],
+        queryKey: [["videos", "getById", { id: videoId }]],
       });
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [isActive, video.id, queryClient]);
+  }, [isActive, queryClient, videoId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

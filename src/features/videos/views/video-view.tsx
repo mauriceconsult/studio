@@ -13,18 +13,17 @@ interface VideoViewProps {
 export function VideoView({ videoId }: VideoViewProps) {
   const trpc = useTRPC();
   const router = useRouter();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dispatchedRef = useRef(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   const { data: video, refetch } = useQuery(
     trpc.videos.getById.queryOptions({ id: videoId })
   );
+  const status = video?.status;
 
   // Dispatch to INSTASKUL once on mount if still pending
   useEffect(() => {
-    if (!video || dispatchedRef.current) return;
-    if (video.status !== "pending") return;
+    if (status !== "pending" || dispatchedRef.current) return;
 
     dispatchedRef.current = true;
 
@@ -38,20 +37,14 @@ export function VideoView({ videoId }: VideoViewProps) {
         else refetch();
       })
       .catch(() => setDispatchError("Network error. Please try again."));
-  }, [video?.status]);
+  }, [refetch, status, videoId]);
 
   // Poll while processing
   useEffect(() => {
-    if (!video) return;
-    if (video.status === "processing" || video.status === "pending") {
-      intervalRef.current = setInterval(() => refetch(), 2000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [video?.status]);
+    if (status !== "processing" && status !== "pending") return;
+    const interval = setInterval(() => refetch(), 2000);
+    return () => clearInterval(interval);
+  }, [refetch, status]);
 
   if (!video) {
     return (

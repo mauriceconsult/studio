@@ -225,6 +225,11 @@ export function systemPrompt(type: TextGenerationType): string {
       `${base} Write concise, informative captions. Each caption should identify what is shown and add editorial context not visible in the image itself.`,
     body:
       `${base} Write a long-form article body. Use inverted pyramid structure. Include subheadings. Cite context and significance. 600–900 words.`,
+    lyrics:
+      "You are an experienced songwriter. Write original, singable song lyrics based on the brief. " +
+      "Use clear section labels such as [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], and [Outro] where appropriate. " +
+      "Keep lines concise and rhythmically natural, make the chorus memorable, and avoid clichés. " +
+      "Do not imitate or reference any existing artist or song. Output only the lyrics, without commentary.",
   };
 
   return typeInstructions[type];
@@ -238,6 +243,7 @@ export function maxOutputTokens(type: TextGenerationType): number {
     script:      2000,
     captions:    400,
     body:        1200,
+    lyrics:      2400,
   };
   return limits[type];
 }

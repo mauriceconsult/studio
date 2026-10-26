@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useRouter } from "next/navigation";
 
@@ -25,6 +25,7 @@ type ImageSizeValue = (typeof IMAGE_SIZES)[number]["value"];
 export function ImageGenerationsToolbar() {
   const trpc   = useTRPC();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [prompt, setPrompt]     = useState("");
   const [style, setStyle]       = useState<ImageStyle>("photojournalistic");
   const [sizeValue, setSizeValue] = useState<ImageSizeValue>("1024x1024");
@@ -35,8 +36,22 @@ export function ImageGenerationsToolbar() {
     })
   );
 
-  function handleCreate() {
+  async function handleCreate() {
     const size = IMAGE_SIZES.find((s) => s.value === sizeValue)!;
+    const quote = await queryClient.fetchQuery(
+      trpc.pricing.quoteImage.queryOptions({
+        count: 1,
+        width: size.width,
+        height: size.height,
+      }),
+    );
+    const price =
+      quote.rail === "momo"
+        ? `${quote.priceUgx.toLocaleString()} UGX`
+        : `$${quote.priceUsd.toFixed(2)}`;
+    if (!window.confirm(`Estimated image generation price: ${price}. Continue?`)) {
+      return;
+    }
     create({
       prompt: prompt.trim(),
       style,
