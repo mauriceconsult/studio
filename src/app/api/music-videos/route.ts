@@ -61,6 +61,10 @@ export async function GET(req: NextRequest) {
     where: { orgId: caller.orgId, deletedAt: null },
     orderBy: { createdAt: "desc" },
     take: 50,
+    include: {
+      audioAsset: { select: { name: true, durationMs: true } },
+      _count: { select: { scenes: true, renders: true } },
+    },
   });
   return NextResponse.json(list);
 }

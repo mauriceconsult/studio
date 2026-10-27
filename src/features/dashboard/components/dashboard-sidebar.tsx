@@ -112,6 +112,8 @@ export function DashboardSidebar() {
     { title: "Text generation",  url: "/text-generations",  icon: FileText     },
     { title: "Image generation", url: "/image-generations", icon: ImageIcon    },
     { title: "Lyrics generation", url: "/lyrics-generations", icon: Music2     },
+    { title: "Songs",            url: "/songs",             icon: Music2      },
+    { title: "Music videos",     url: "/music-videos",      icon: Clapperboard },
     { title: "Courses",          url: "/courses",           icon: BookOpen     },
     { title: "Videos",           url: "/videos",            icon: Clapperboard },
   ];

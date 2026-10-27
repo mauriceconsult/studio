@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSignedAudioUrl } from "@/lib/r2";
 import { assertActiveSubscription } from "@/lib/subscription-guard";
 import { quoteSong, toPublicQuote } from "@/lib/pricing/quote";
 import { failSongGeneration } from "@/lib/song-generation-output";
@@ -13,6 +14,58 @@ import {
 } from "@/lib/songs/provider";
 
 class InsufficientSongCreditsError extends Error {}
+
+export async function GET() {
+  const { userId, orgId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!orgId) {
+    return NextResponse.json(
+      { error: "An organization is required" },
+      { status: 403 },
+    );
+  }
+
+  const songs = await prisma.songGeneration.findMany({
+    where: { orgId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: { outputAsset: { select: { id: true } } },
+  });
+
+  return NextResponse.json(
+    await Promise.all(
+      songs.map(async (song) => ({
+        id: song.id,
+        status: song.status,
+        lyrics: song.lyrics,
+        stylePrompt: song.stylePrompt,
+        language: song.language,
+        tempoBpm: song.tempoBpm,
+        durationSeconds: song.durationSeconds,
+        targetDurationSeconds: song.targetDurationSeconds,
+        errorMessage: song.errorMessage,
+        createdAt: song.createdAt,
+        assetId: song.outputAsset?.id ?? null,
+        audioUrl:
+          song.status === "COMPLETED" && song.r2ObjectKey
+            ? await getSignedAudioUrl(song.r2ObjectKey)
+            : null,
+        quote:
+          song.priceUgx === null ||
+          song.priceUsdCents === null ||
+          song.pricingRail === null
+            ? null
+            : {
+                priceUgx: song.priceUgx,
+                priceUsd: song.priceUsdCents / 100,
+                rail: song.pricingRail,
+              },
+      })),
+    ),
+  );
+}
 
 export async function POST(request: NextRequest) {
   const { userId, orgId } = await auth();
