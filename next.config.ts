@@ -15,9 +15,9 @@ export default withSentryConfig(nextConfig, {
 
   org: "max-rv",
 
-  project: "javascript-nextjs",
-
-  // Only print logs for uploading source maps in CI
+  project: "max_ai_studio",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // sentryUrl: "https://de.sentry.io", // only if you're on the EU region
   silent: !process.env.CI,
 
   // For all available options, see:
