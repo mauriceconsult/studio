@@ -114,6 +114,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
         });
         if (reserved.count === 0) throw new InsufficientCreditsError();
+      } else if (rail === "mpesa") {
+        const reserved = await tx.mpesaCredits.updateMany({
+          where: {
+            orgId: caller.orgId,
+            topUpBalanceUgx: { gte: quote.priceUgx },
+          },
+          data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
+        });
+        if (reserved.count === 0) throw new InsufficientCreditsError();
       }
 
       return tx.imageGeneration.create({
@@ -145,7 +154,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return NextResponse.json(
-        { error: "Insufficient MoMo top-up balance", priceUgx: quote.priceUgx },
+        { error: "Insufficient mobile money top-up balance", priceUgx: quote.priceUgx },
         { status: 402 },
       );
     }
@@ -181,7 +190,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           imageGenerationId: generationId,
           imagesUsed: 1,
           costMicroUsd: quote.costMicroUsd,
-          chargedUgx: rail === "momo" ? quote.priceUgx : null,
+          chargedUgx:
+            rail === "momo" || rail === "mpesa" ? quote.priceUgx : null,
         },
       });
       const updated = await tx.musicVideoScene.updateMany({
@@ -206,7 +216,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       sceneId: scene.id,
       assetId: asset.id,
       assetUrl,
-      priceUgx: rail === "momo" ? quote.priceUgx : undefined,
+      priceUgx: rail === "momo" || rail === "mpesa" ? quote.priceUgx : undefined,
+      priceKes: rail === "mpesa" ? quote.priceKes : undefined,
       priceUsd: quote.priceUsd,
     });
   } catch (error) {
@@ -225,6 +236,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
         if (rail === "momo") {
           const refund = await tx.momoCredits.updateMany({
+            where: { orgId: caller.orgId },
+            data: { topUpBalanceUgx: { increment: quote.priceUgx } },
+          });
+          if (refund.count === 0) {
+            throw new Error("Could not refund reserved image credits");
+          }
+        } else if (rail === "mpesa") {
+          const refund = await tx.mpesaCredits.updateMany({
             where: { orgId: caller.orgId },
             data: { topUpBalanceUgx: { increment: quote.priceUgx } },
           });

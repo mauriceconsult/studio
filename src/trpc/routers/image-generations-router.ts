@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { assertActiveSubscription } from "@/lib/subscription-guard";
 import { createTRPCRouter, orgProcedure } from "../init";
 import { quoteImage } from "@/lib/pricing/quote";
+import { pricingRailForOrg } from "@/lib/pricing/rail";
 
 const ALLOWED_STYLES = [
   "photojournalistic",
@@ -92,11 +93,7 @@ export const imageGenerationsRouter = createTRPCRouter({
     .mutation(async ({ input, ctx }) => {
       // Single guard covering both Polar and MoMo users
       await assertActiveSubscription(ctx.orgId);
-      const momo = await prisma.momoCredits.findUnique({
-        where: { orgId: ctx.orgId },
-        select: { orgId: true },
-      });
-      const pricingRail = momo ? "momo" : "polar";
+      const pricingRail = await pricingRailForOrg(ctx.orgId);
       const defaultDimensions =
         input.aspectRatio === "9:16"
           ? { width: 1080, height: 1920 }

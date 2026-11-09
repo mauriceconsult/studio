@@ -20,15 +20,26 @@ import type { ClerkClient } from "@clerk/backend";
 import { polar } from "@/lib/polar";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
+import { getBillingStatus } from "@/lib/platform";
 import { createTRPCRouter, orgProcedure } from "../init";
 import {
   deriveMarket,
   assertMarketResolved,
   MarketUnresolvedError,
   OVERAGE_PRICES,
+  kesToUgxEquivalent,
+  ugxToKes,
   type MeterEvent,
   type MarketOrUnresolved,
 } from "@/lib/billing/market";
+import {
+  initiateMpesaStkPush,
+  normalizeKenyanPhone,
+  queryMpesaStkPush,
+} from "@/lib/payments/mpesa";
+import {
+  reconcileMpesaPayment,
+} from "@/lib/payments/handlers/mpesa";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +75,7 @@ const POLAR_METER_MAP: Record<MeterEvent, string> = {
   voices_cloned: env.POLAR_METER_VOICE_CREATION,
   video_minutes: env.POLAR_METER_VIDEO_MINUTES,
 };
+const PLAN_PRICE_UGX = { starter: 50_000, pro: 120_000 } as const;
 
 interface PolarMeter { amount?: number | null }
 interface PolarActiveSub {
@@ -81,6 +93,7 @@ function aggregatePolarMeters(subs: PolarActiveSub[]): number {
 
 export type BillingRegion =
   | "uganda"
+  | "kenya"
   | "international";
 
 export type BillingStrategy =
@@ -89,6 +102,7 @@ export type BillingStrategy =
 
 export type CheckoutProvider =
   | "momo"
+  | "mpesa"
   | "polar";
 
 export interface BillingConfig {
@@ -101,6 +115,7 @@ export interface BillingConfig {
   currency: string;
 
   momoEnabled: boolean;
+  mpesaEnabled: boolean;
   polarEnabled: boolean;
 
   showCredits: boolean;
@@ -110,13 +125,16 @@ export interface BillingConfig {
 const DEFAULT_REGION: BillingRegion =
   process.env.NEXT_PUBLIC_BILLING_REGION === "international"
     ? "international"
-    : "uganda";
+    : process.env.NEXT_PUBLIC_BILLING_REGION === "kenya"
+      ? "kenya"
+      : "uganda";
 
 /**
  * Returns the billing configuration for a region.
  *
  * Today:
  *   Uganda        -> MTN MoMo Credits
+ *   Kenya         -> Safaricom M-Pesa Credits
  *   International -> Polar Subscription
  *
  * Later this can become organization-aware:
@@ -138,8 +156,22 @@ export function getBillingConfig(
         currency: "UGX",
 
         momoEnabled: true,
+        mpesaEnabled: false,
         polarEnabled: false,
 
+        showCredits: true,
+        showSubscriptions: false,
+      };
+
+    case "kenya":
+      return {
+        region,
+        strategy: "credits",
+        checkoutProvider: "mpesa",
+        currency: "KES",
+        momoEnabled: false,
+        mpesaEnabled: true,
+        polarEnabled: false,
         showCredits: true,
         showSubscriptions: false,
       };
@@ -155,6 +187,7 @@ export function getBillingConfig(
         currency: "USD",
 
         momoEnabled: false,
+        mpesaEnabled: false,
         polarEnabled: true,
 
         showCredits: false,
@@ -258,6 +291,22 @@ await client.organizations.updateOrganization(
         };
       }
 
+      if (market === "ke") {
+        const sub = await prisma.mpesaSubscription.findUnique({
+          where: { orgId: ctx.orgId },
+          include: { credits: true },
+        });
+        return {
+          market: "ke" as const,
+          hasActiveSubscription:
+            !!sub && sub.status === "active" && sub.expiresAt > new Date(),
+          plan: sub?.plan ?? null,
+          credits: sub?.credits ?? null,
+          estimatedCostCents: null,
+          customerId: null,
+        };
+      }
+
       try {
         const state = await polar.customers.getStateExternal({
           externalId: ctx.orgId,
@@ -299,6 +348,12 @@ await client.organizations.updateOrganization(
           message: "Ugandan accounts use MoMo. Use initiateMomoPlan instead.",
         });
       }
+      if (market === "ke") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Kenyan accounts use M-Pesa checkout.",
+        });
+      }
 
       const result = await polar.checkouts.create({
         products: [env.POLAR_PRODUCT_ID],
@@ -326,10 +381,10 @@ await client.organizations.updateOrganization(
       const market = await getOrgMarket(ctx.orgId);
       assertMarketResolved(market, ctx.orgId);
 
-      if (market === "ug") {
+      if (market !== "global") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "MoMo accounts manage billing via the in-app billing page.",
+          message: "Mobile money accounts manage billing in the in-app billing page.",
         });
       }
 
@@ -394,6 +449,20 @@ await client.organizations.updateOrganization(
       } catch (err) {
         throw toTRPC(err);
       }
+    }),
+
+  getMomoPaymentStatus: orgProcedure
+    .input(z.object({ referenceId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const market = await getOrgMarket(ctx.orgId);
+      assertMarketResolved(market, ctx.orgId);
+      if (market !== "ug") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This payment reference is not for a Ugandan MTN transaction.",
+        });
+      }
+      return getBillingStatus(input.referenceId);
     }),
 
   // ── initiateMomoTopUp ──────────────────────────────────────────────────────
@@ -467,6 +536,200 @@ await client.organizations.updateOrganization(
       }
     }),
 
+  // ── initiateMpesaPlan ─────────────────────────────────────────────────────
+
+  initiateMpesaPlan: orgProcedure
+    .input(
+      z.object({
+        plan: z.enum(["starter", "pro"]),
+        phone: z.string().regex(/^(?:\+?254|0)?[17]\d{8}$/),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const market = await getOrgMarket(ctx.orgId);
+        assertMarketResolved(market, ctx.orgId);
+        if (market !== "ke") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "M-Pesa checkout is available for Kenyan accounts only.",
+          });
+        }
+
+        const phone = normalizeKenyanPhone(input.phone);
+        const amountKes = ugxToKes(PLAN_PRICE_UGX[input.plan]);
+        const amountUgxEquivalent = kesToUgxEquivalent(amountKes);
+        const payment = await prisma.mpesaPayment.create({
+          data: {
+            orgId: ctx.orgId,
+            phone,
+            purpose: "plan",
+            plan: input.plan,
+            amountKes,
+            amountUgxEquivalent,
+          },
+        });
+
+        try {
+          const stk = await initiateMpesaStkPush({
+            amountKes,
+            phone,
+            accountReference: `ST${payment.id}`,
+            transactionDesc: `Studio ${input.plan}`,
+          });
+          await prisma.mpesaPayment.update({
+            where: { id: payment.id },
+            data: {
+              checkoutRequestId: stk.CheckoutRequestID,
+              merchantRequestId: stk.MerchantRequestID,
+            },
+          });
+          return {
+            paymentId: payment.id,
+            amountKes,
+            customerMessage: stk.CustomerMessage,
+          };
+        } catch (error) {
+          await prisma.mpesaPayment.update({
+            where: { id: payment.id },
+            data: {
+              status: "failed",
+              resultDescription:
+                error instanceof Error ? error.message.slice(0, 500) : "Daraja request failed",
+            },
+          });
+          throw error;
+        }
+      } catch (err) {
+        throw toTRPC(err);
+      }
+    }),
+
+  // ── initiateMpesaTopUp ────────────────────────────────────────────────────
+
+  initiateMpesaTopUp: orgProcedure
+    .input(
+      z.object({
+        phone: z.string().regex(/^(?:\+?254|0)?[17]\d{8}$/),
+        meter: z.enum(["video_minutes", "characters_synthesized", "voices_cloned"]),
+        quantity: z.number().int().positive().max(500),
+        jobId: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const market = await getOrgMarket(ctx.orgId);
+        assertMarketResolved(market, ctx.orgId);
+        if (market !== "ke") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "M-Pesa top-ups are available for Kenyan accounts only.",
+          });
+        }
+
+        const subscription = await prisma.mpesaSubscription.findUnique({
+          where: { orgId: ctx.orgId },
+          select: { status: true, expiresAt: true },
+        });
+        if (
+          !subscription ||
+          subscription.status !== "active" ||
+          subscription.expiresAt <= new Date()
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "An active M-Pesa plan is required before topping up.",
+          });
+        }
+
+        const phone = normalizeKenyanPhone(input.phone);
+        const requestedAmountUgx =
+          OVERAGE_PRICES[input.meter].ugx * input.quantity;
+        const amountKes = ugxToKes(requestedAmountUgx);
+        const amountUgxEquivalent = kesToUgxEquivalent(amountKes);
+        const payment = await prisma.mpesaPayment.create({
+          data: {
+            orgId: ctx.orgId,
+            phone,
+            purpose: "topup",
+            meter: input.meter,
+            quantity: input.quantity,
+            jobId: input.jobId,
+            amountKes,
+            amountUgxEquivalent,
+          },
+        });
+
+        try {
+          const stk = await initiateMpesaStkPush({
+            amountKes,
+            phone,
+            accountReference: `ST${payment.id}`,
+            transactionDesc: "Studio top-up",
+          });
+          await prisma.mpesaPayment.update({
+            where: { id: payment.id },
+            data: {
+              checkoutRequestId: stk.CheckoutRequestID,
+              merchantRequestId: stk.MerchantRequestID,
+            },
+          });
+          return {
+            paymentId: payment.id,
+            amountKes,
+            unitPriceKes: ugxToKes(OVERAGE_PRICES[input.meter].ugx),
+            meter: input.meter,
+            quantity: input.quantity,
+            customerMessage: stk.CustomerMessage,
+          };
+        } catch (error) {
+          await prisma.mpesaPayment.update({
+            where: { id: payment.id },
+            data: {
+              status: "failed",
+              resultDescription:
+                error instanceof Error ? error.message.slice(0, 500) : "Daraja request failed",
+            },
+          });
+          throw error;
+        }
+      } catch (err) {
+        throw toTRPC(err);
+      }
+    }),
+
+  // Daraja owns its payment state and status reconciliation; no MTN status API
+  // or transaction identifiers are used for this query.
+  getMpesaPaymentStatus: orgProcedure
+    .input(z.object({ paymentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const payment = await prisma.mpesaPayment.findFirst({
+        where: { id: input.paymentId, orgId: ctx.orgId },
+      });
+      if (!payment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "M-Pesa payment was not found.",
+        });
+      }
+
+      if (payment.status === "pending" && payment.checkoutRequestId) {
+        const result = await queryMpesaStkPush(payment.checkoutRequestId);
+        await reconcileMpesaPayment(payment.checkoutRequestId, result);
+      }
+
+      const latest = await prisma.mpesaPayment.findUniqueOrThrow({
+        where: { id: payment.id },
+        select: {
+          status: true,
+          amountKes: true,
+          resultDescription: true,
+          receipt: true,
+        },
+      });
+      return latest;
+    }),
+
   // ── ingestMeterEvent ───────────────────────────────────────────────────────
 
   ingestMeterEvent: orgProcedure
@@ -501,9 +764,14 @@ await client.organizations.updateOrganization(
           return { creditsRemaining: null, needsTopUp: false, estimatedCostCents };
         }
 
-        const credits = await prisma.momoCredits.findUnique({
-          where: { orgId: ctx.orgId },
-        });
+        const credits =
+          market === "ke"
+            ? await prisma.mpesaCredits.findUnique({
+                where: { orgId: ctx.orgId },
+              })
+            : await prisma.momoCredits.findUnique({
+                where: { orgId: ctx.orgId },
+              });
 
         if (!credits) {
           return { creditsRemaining: 0, needsTopUp: true, estimatedCostCents };
@@ -520,10 +788,17 @@ await client.organizations.updateOrganization(
         const needsTopUp = current < input.quantity;
 
         if (!needsTopUp) {
-          await prisma.momoCredits.update({
-            where: { orgId: ctx.orgId },
-            data: { [field]: { decrement: input.quantity } },
-          });
+          if (market === "ke") {
+            await prisma.mpesaCredits.update({
+              where: { orgId: ctx.orgId },
+              data: { [field]: { decrement: input.quantity } },
+            });
+          } else {
+            await prisma.momoCredits.update({
+              where: { orgId: ctx.orgId },
+              data: { [field]: { decrement: input.quantity } },
+            });
+          }
         }
 
         return {

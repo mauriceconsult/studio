@@ -1,6 +1,7 @@
+import { ugxToKes } from "@/lib/billing/market";
 import { PRICING, type Resolution } from "./config";
 
-export type Rail = "momo" | "polar";
+export type Rail = "momo" | "mpesa" | "polar";
 export type Product = "song" | "image" | "clip";
 
 export interface Quote {
@@ -8,6 +9,7 @@ export interface Quote {
   costMicroUsd: number;
   costUgx: number;
   priceUgx: number;
+  priceKes: number;
   priceUsd: number;
   priceUsdCents: number;
   rail: Rail;
@@ -16,6 +18,7 @@ export interface Quote {
 
 export interface PublicQuote {
   priceUgx: number;
+  priceKes: number;
   priceUsd: number;
   rail: Rail;
   polarMinimumPurchaseUsd: number;
@@ -24,6 +27,7 @@ export interface PublicQuote {
 export function toPublicQuote(quote: Quote): PublicQuote {
   return {
     priceUgx: quote.priceUgx,
+    priceKes: quote.priceKes,
     priceUsd: quote.priceUsd,
     rail: quote.rail,
     polarMinimumPurchaseUsd: quote.polarMinimumPurchaseUsd,
@@ -43,17 +47,19 @@ function make(
   const grossUsd = (costUsd * multiple) / (1 - fee);
   const costUgx = costUsd * PRICING.usdToUgx;
   const priceUsdCents = Math.ceil(grossUsd * 100);
+  const priceUgx =
+    Math.ceil(
+      (costUgx * multiple) /
+        (1 - fee) /
+        PRICING.roundUpToUgx,
+    ) * PRICING.roundUpToUgx;
 
   return {
     costUsd,
     costMicroUsd: Math.round(costUsd * 1_000_000),
     costUgx: Math.round(costUgx),
-    priceUgx:
-      Math.ceil(
-        (costUgx * multiple) /
-          (1 - fee) /
-          PRICING.roundUpToUgx,
-      ) * PRICING.roundUpToUgx,
+    priceUgx,
+    priceKes: ugxToKes(priceUgx),
     priceUsd: priceUsdCents / 100,
     priceUsdCents,
     rail,

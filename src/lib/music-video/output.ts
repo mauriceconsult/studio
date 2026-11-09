@@ -126,7 +126,7 @@ export async function completeVideoClipGeneration({
           videoSecondsUsed: Math.round(durationSeconds),
           costMicroUsd: generation.costMicroUsd,
           chargedUgx:
-            generation.pricingRail === "momo"
+            generation.pricingRail === "momo" || generation.pricingRail === "mpesa"
               ? generation.priceUgx
               : generation.pricingRail === null
                 ? generation.billingCostUgx
@@ -187,18 +187,24 @@ export async function failVideoClipGeneration(
       throw new Error(`Video clip generation ${generationId} was not found`);
     }
     const refundUgx =
-      generation.pricingRail === "momo"
+      generation.pricingRail === "momo" || generation.pricingRail === "mpesa"
         ? generation.priceUgx
         : generation.pricingRail === null
           ? generation.billingCostUgx
           : null;
     if (refundUgx !== null) {
-      const refunded = await tx.momoCredits.updateMany({
+      const refunded =
+        generation.pricingRail === "mpesa"
+          ? await tx.mpesaCredits.updateMany({
+              where: { orgId: generation.orgId },
+              data: { topUpBalanceUgx: { increment: refundUgx } },
+            })
+          : await tx.momoCredits.updateMany({
         where: { orgId: generation.orgId },
         data: {
           topUpBalanceUgx: { increment: refundUgx },
         },
-      });
+            });
       if (refunded.count === 0) {
         throw new Error("Could not refund the reserved video clip credits");
       }

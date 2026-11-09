@@ -48,7 +48,9 @@ export function ImageGenerationsToolbar() {
     const price =
       quote.rail === "momo"
         ? `${quote.priceUgx.toLocaleString()} UGX`
-        : `$${quote.priceUsd.toFixed(2)}`;
+        : quote.rail === "mpesa"
+          ? `KES ${quote.priceKes.toLocaleString()}`
+          : `$${quote.priceUsd.toFixed(2)}`;
     if (!window.confirm(`Estimated image generation price: ${price}. Continue?`)) {
       return;
     }

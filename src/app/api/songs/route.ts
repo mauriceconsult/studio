@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { getSignedAudioUrl } from "@/lib/r2";
 import { assertActiveSubscription } from "@/lib/subscription-guard";
 import { quoteSong, toPublicQuote } from "@/lib/pricing/quote";
+import { pricingRailForOrg } from "@/lib/pricing/rail";
+import { ugxToKes } from "@/lib/billing/market";
 import { failSongGeneration } from "@/lib/song-generation-output";
 import {
   buildStylePrompt,
@@ -59,6 +61,10 @@ export async function GET() {
             ? null
             : {
                 priceUgx: song.priceUgx,
+                priceKes:
+                  song.pricingRail === "mpesa"
+                    ? ugxToKes(song.priceUgx)
+                    : 0,
                 priceUsd: song.priceUsdCents / 100,
                 rail: song.pricingRail,
               },
@@ -131,17 +137,19 @@ export async function POST(request: NextRequest) {
   }
 
   const vocalStyle = voice ? `${voice.description ?? voice.name} vocals` : null;
-  const momo = await prisma.momoCredits.findUnique({
-    where: { orgId },
-    select: { orgId: true },
-  });
-  const pricingRail = momo ? "momo" : "polar";
+  const pricingRail = await pricingRailForOrg(orgId);
   const quote = quoteSong(input.durationSeconds, pricingRail);
   let song;
   try {
     song = await prisma.$transaction(async (tx) => {
       if (pricingRail === "momo") {
         const debit = await tx.momoCredits.updateMany({
+          where: { orgId, topUpBalanceUgx: { gte: quote.priceUgx } },
+          data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
+        });
+        if (debit.count === 0) throw new InsufficientSongCreditsError();
+      } else if (pricingRail === "mpesa") {
+        const debit = await tx.mpesaCredits.updateMany({
           where: { orgId, topUpBalanceUgx: { gte: quote.priceUgx } },
           data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
         });
@@ -176,7 +184,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof InsufficientSongCreditsError) {
       return NextResponse.json(
-        { error: "Insufficient MoMo top-up balance", quote: toPublicQuote(quote) },
+        { error: "Insufficient mobile money top-up balance", quote: toPublicQuote(quote) },
         { status: 402 },
       );
     }

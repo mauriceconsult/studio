@@ -75,6 +75,14 @@ export const env = createEnv({
     MOMO_SUBSCRIPTION_KEY: z.string().min(1),
     MOMO_API_USER: z.string().min(1),
     MOMO_API_KEY: z.string().min(1),
+
+    // ── Safaricom Daraja (Kenya M-Pesa) ──────────────────────────────────────
+    MPESA_CONSUMER_KEY: z.string().min(1),
+    MPESA_CONSUMER_SECRET: z.string().min(1),
+    MPESA_CALLBACK_URL: z.string().url(),
+    MPESA_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+    MPESA_BUSINESS_SHORTCODE: z.string().min(1),
+    MPESA_PASSKEY: z.string().min(1),
   },
 
   // ── Client-exposed vars ─────────────────────────────────────────────────────

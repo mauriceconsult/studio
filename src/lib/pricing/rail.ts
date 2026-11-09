@@ -1,10 +1,18 @@
-import { prisma } from "@/lib/db";
+import { clerkClient } from "@clerk/nextjs/server";
+import {
+  assertMarketResolved,
+  deriveMarket,
+} from "@/lib/billing/market";
 import type { Rail } from "./quote";
 
 export async function pricingRailForOrg(orgId: string): Promise<Rail> {
-  const momo = await prisma.momoCredits.findUnique({
-    where: { orgId },
-    select: { orgId: true },
+  const client = await clerkClient();
+  const org = await client.organizations.getOrganization({
+    organizationId: orgId,
   });
-  return momo ? "momo" : "polar";
+  const market = deriveMarket(org.publicMetadata?.country as string | undefined);
+  assertMarketResolved(market, orgId);
+  if (market === "ke") return "mpesa";
+  if (market === "ug") return "momo";
+  return "polar";
 }

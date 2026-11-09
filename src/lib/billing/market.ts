@@ -3,12 +3,13 @@
  *
  * Derives the payment market from Clerk org publicMetadata.country.
  * "ug"         → MoMo (MTN Uganda)
+ * "ke"         → Daraja (Safaricom Kenya)
  * "global"     → Polar (card / Stripe)
  * "unresolved" → country was never set — must be handled explicitly,
  *                never silently defaulted
  */
 
-export type Market = "ug" | "global";
+export type Market = "ug" | "ke" | "global";
 export type MarketOrUnresolved = Market | "unresolved";
 
 export type MeterEvent =
@@ -17,6 +18,22 @@ export type MeterEvent =
   | "voices_cloned";
 
 export type PlanId = "starter" | "pro";
+
+export const UGX_PER_KES = 32;
+
+export function ugxToKes(ugx: number): number {
+  if (!Number.isSafeInteger(ugx) || ugx < 0) {
+    throw new RangeError("UGX amount must be a non-negative whole number");
+  }
+  return Math.max(1, Math.ceil(ugx / UGX_PER_KES));
+}
+
+export function kesToUgxEquivalent(kes: number): number {
+  if (!Number.isSafeInteger(kes) || kes < 1) {
+    throw new RangeError("KES amount must be a positive whole number");
+  }
+  return kes * UGX_PER_KES;
+}
 
 /**
  * Resolves a country string to a market.
@@ -27,7 +44,14 @@ export function deriveMarket(
   country: string | null | undefined,
 ): MarketOrUnresolved {
   if (!country) return "unresolved";
-  return country.toUpperCase() === "UG" ? "ug" : "global";
+  switch (country.toUpperCase()) {
+    case "UG":
+      return "ug";
+    case "KE":
+      return "ke";
+    default:
+      return "global";
+  }
 }
 
 /**

@@ -118,13 +118,17 @@ export async function completeSongGeneration({
           audioSecondsUsed: Math.ceil(durationSeconds),
           costMicroUsd: generation.costMicroUsd,
           chargedUgx:
-            generation.pricingRail === "momo" ? generation.priceUgx : null,
+            generation.pricingRail === "momo" || generation.pricingRail === "mpesa"
+              ? generation.priceUgx
+              : null,
         },
         update: {
           audioSecondsUsed: Math.ceil(durationSeconds),
           costMicroUsd: generation.costMicroUsd,
           chargedUgx:
-            generation.pricingRail === "momo" ? generation.priceUgx : null,
+            generation.pricingRail === "momo" || generation.pricingRail === "mpesa"
+              ? generation.priceUgx
+              : null,
         },
       });
 
@@ -163,6 +167,14 @@ export async function failSongGeneration(
     }
     if (generation.pricingRail === "momo" && generation.priceUgx !== null) {
       const refunded = await tx.momoCredits.updateMany({
+        where: { orgId: generation.orgId },
+        data: { topUpBalanceUgx: { increment: generation.priceUgx } },
+      });
+      if (refunded.count === 0) {
+        throw new Error("Could not refund the reserved song credits");
+      }
+    } else if (generation.pricingRail === "mpesa" && generation.priceUgx !== null) {
+      const refunded = await tx.mpesaCredits.updateMany({
         where: { orgId: generation.orgId },
         data: { topUpBalanceUgx: { increment: generation.priceUgx } },
       });

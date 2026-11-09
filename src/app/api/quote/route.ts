@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   const rail = await pricingRailForOrg(caller.orgId);
   const input = parsed.data;
   let responseBody:
-    | { priceUgx: number; priceUsd: number }
+    | { priceUgx: number; priceKes: number; priceUsd: number }
     | {
         scenesReady: number;
         scenesToGenerate: number;
@@ -66,9 +66,11 @@ export async function POST(request: NextRequest) {
           position: number;
           kind: string;
           priceUgx: number;
+          priceKes: number;
           priceUsd: number;
         }>;
         priceUgx: number;
+        priceKes: number;
         priceUsd: number;
         renderIncluded: true;
       };
@@ -145,10 +147,12 @@ export async function POST(request: NextRequest) {
           position: scene.position,
           kind: isClip ? "clip" : "image",
           priceUgx: quote.priceUgx,
+          priceKes: quote.priceKes,
           priceUsd: quote.priceUsd,
         };
       });
     totalUgx = lines.reduce((total, line) => total + line.priceUgx, 0);
+    const totalKes = lines.reduce((total, line) => total + line.priceKes, 0);
     const totalUsdCents = lines.reduce(
       (total, line) => total + Math.round(line.priceUsd * 100),
       0,
@@ -158,6 +162,7 @@ export async function POST(request: NextRequest) {
       scenesToGenerate: lines.length,
       lines,
       priceUgx: totalUgx,
+      priceKes: totalKes,
       priceUsd: totalUsdCents / 100,
       renderIncluded: true,
     };
@@ -165,12 +170,21 @@ export async function POST(request: NextRequest) {
 
   let balanceUgx: number | undefined;
   let canAfford: boolean | undefined;
+  let balanceKes: number | undefined;
   if (rail === "momo") {
     const credits = await prisma.momoCredits.findUnique({
       where: { orgId: caller.orgId },
       select: { topUpBalanceUgx: true },
     });
     balanceUgx = credits?.topUpBalanceUgx ?? 0;
+    canAfford = balanceUgx >= totalUgx;
+  } else if (rail === "mpesa") {
+    const credits = await prisma.mpesaCredits.findUnique({
+      where: { orgId: caller.orgId },
+      select: { topUpBalanceUgx: true },
+    });
+    balanceUgx = credits?.topUpBalanceUgx ?? 0;
+    balanceKes = Math.floor(balanceUgx / 32);
     canAfford = balanceUgx >= totalUgx;
   }
 
@@ -179,5 +193,6 @@ export async function POST(request: NextRequest) {
     rail,
     ...responseBody,
     ...(rail === "momo" ? { balanceUgx, canAfford } : {}),
+    ...(rail === "mpesa" ? { balanceKes, canAfford } : {}),
   });
 }

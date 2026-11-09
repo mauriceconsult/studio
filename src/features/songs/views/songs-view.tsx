@@ -16,7 +16,12 @@ type Song = {
   createdAt: string;
   assetId: string | null;
   audioUrl: string | null;
-  quote: { priceUgx: number; priceUsd: number; rail: string } | null;
+  quote: {
+    priceUgx: number;
+    priceKes: number;
+    priceUsd: number;
+    rail: string;
+  } | null;
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -242,7 +247,15 @@ export function SongsView({
                       : song.targetDurationSeconds
                         ? ` · target ${song.targetDurationSeconds} sec`
                         : ""}
-                    {song.quote ? ` · ${song.quote.priceUgx.toLocaleString()} UGX` : ""}
+                    {song.quote
+                      ? ` · ${
+                          song.quote.rail === "mpesa"
+                            ? `KES ${song.quote.priceKes.toLocaleString()}`
+                            : song.quote.rail === "momo"
+                              ? `${song.quote.priceUgx.toLocaleString()} UGX`
+                              : `$${song.quote.priceUsd.toFixed(2)}`
+                        }`
+                      : ""}
                   </p>
                 </div>
                 <span className="text-xs font-medium">{song.status}</span>

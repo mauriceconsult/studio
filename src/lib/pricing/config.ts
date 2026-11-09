@@ -6,6 +6,7 @@ export const PRICING = {
   usdToUgx: env.PRICING_USD_UGX,
   paymentFee: {
     momo: env.PRICING_MOMO_PAYMENT_FEE,
+    mpesa: env.PRICING_MOMO_PAYMENT_FEE,
     polar: env.PRICING_POLAR_PAYMENT_FEE,
   },
   roundUpToUgx: 100,

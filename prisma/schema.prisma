@@ -221,6 +221,61 @@ model MomoTopUp {
   createdAt   DateTime @default(now())
 }
 
+// ─── Safaricom Daraja (Kenya M-Pesa) ────────────────────────────────────────
+// Daraja payments and balances are independent of MTN MoMo. Prices and the
+// internal usage ledger are retained as UGX-equivalent values; checkout is KES.
+
+model MpesaSubscription {
+  id          String   @id @default(cuid())
+  orgId       String   @unique
+  plan        String
+  status      String
+  phone       String
+  referenceId String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  credits     MpesaCredits?
+}
+
+model MpesaCredits {
+  id                String   @id @default(cuid())
+  orgId             String   @unique
+  subscriptionId    String   @unique
+  minutesRemaining  Int      @default(0)
+  charsRemaining    Int      @default(0)
+  voicesRemaining   Int      @default(0)
+  topUpBalanceUgx   Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  subscription      MpesaSubscription @relation(fields: [subscriptionId], references: [id])
+}
+
+model MpesaPayment {
+  id                    String   @id @default(cuid())
+  orgId                 String
+  phone                 String
+  purpose               String
+  amountKes             Int
+  amountUgxEquivalent   Int
+  status                String   @default("pending")
+  plan                  String?
+  meter                 String?
+  quantity              Int?
+  jobId                 String?
+  checkoutRequestId     String?  @unique
+  merchantRequestId     String?
+  receipt               String?
+  resultCode            String?
+  resultDescription     String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([orgId, createdAt])
+  @@index([status, createdAt])
+}
+
 // Add these models to your existing schema.prisma
 // They follow the same ownership pattern as your existing Generation model
 // (userId + organizationId for Clerk multi-tenancy)

@@ -6,6 +6,7 @@ import { getSignedAudioUrl } from "@/lib/r2";
 import { finalizeSong } from "@/lib/songs/finalize";
 import { queueStatus } from "@/lib/songs/provider";
 import { failSongGeneration } from "@/lib/song-generation-output";
+import { ugxToKes } from "@/lib/billing/market";
 
 export const maxDuration = 60;
 const GIVE_UP_MS = 15 * 60_000;
@@ -76,6 +77,8 @@ export async function GET(
         ? null
         : {
             priceUgx: song.priceUgx,
+            priceKes:
+              song.pricingRail === "mpesa" ? ugxToKes(song.priceUgx) : 0,
             priceUsd: song.priceUsdCents / 100,
             rail: song.pricingRail,
           },

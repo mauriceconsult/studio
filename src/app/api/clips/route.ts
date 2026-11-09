@@ -12,6 +12,7 @@ import { clampClipSeconds } from "@/lib/clips/limits";
 import { quoteClip, toPublicQuote } from "@/lib/pricing/quote";
 import { failVideoClipGeneration } from "@/lib/music-video/output";
 import { assertActiveSubscription } from "@/lib/subscription-guard";
+import { pricingRailForOrg } from "@/lib/pricing/rail";
 
 const schema = z.object({
   sceneId: z.string(),
@@ -45,13 +46,7 @@ export async function POST(req: NextRequest) {
   const durationSeconds =
     p.data.durationSeconds ??
     clampClipSeconds(scene.endMs - scene.startMs);
-  const hasMomoCredits = Boolean(
-    await prisma.momoCredits.findUnique({
-      where: { orgId: caller.orgId },
-      select: { orgId: true },
-    }),
-  );
-  const pricingRail = hasMomoCredits ? "momo" : "polar";
+  const pricingRail = await pricingRailForOrg(caller.orgId);
   const resolution = p.data.resolution ?? env.CLIP_FAL_RESOLUTION;
   const quote = quoteClip(durationSeconds, resolution, pricingRail);
   const prompt = p.data.prompt ?? scene.visualPrompt;
@@ -112,6 +107,15 @@ export async function POST(req: NextRequest) {
           data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
         });
         if (debit.count === 0) throw new InsufficientClipCreditsError();
+      } else if (pricingRail === "mpesa") {
+        const debit = await tx.mpesaCredits.updateMany({
+          where: {
+            orgId: caller.orgId,
+            topUpBalanceUgx: { gte: quote.priceUgx },
+          },
+          data: { topUpBalanceUgx: { decrement: quote.priceUgx } },
+        });
+        if (debit.count === 0) throw new InsufficientClipCreditsError();
       }
 
       const created = await tx.videoClipGeneration.create({
@@ -141,7 +145,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof InsufficientClipCreditsError) {
       return NextResponse.json(
         {
-          error: "Insufficient MoMo top-up balance",
+          error: "Insufficient mobile money top-up balance",
           quote: toPublicQuote(quote),
         },
         { status: 402 },
