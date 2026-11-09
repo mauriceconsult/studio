@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { uploadAudio } from "@/lib/r2";
 import { createTRPCRouter, orgProcedure } from "../init";
 import { TEXT_MAX_LENGTH } from "@/features/text-to-speech/data/constants";
+import { assertActiveSubscription } from "@/lib/subscription-guard";
 
 
 export const generationsRouter = createTRPCRouter({
@@ -57,27 +58,7 @@ export const generationsRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      // Check for active subscription before generation
-      try {
-        const customerState = await polar.customers.getStateExternal({
-          externalId: ctx.orgId,
-        });
-        const hasActiveSubscription =
-          (customerState.activeSubscriptions ?? []).length > 0;
-        if (!hasActiveSubscription) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "SUBSCRIPTION_REQUIRED",
-          });
-        }
-      } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        // Customer doesn't exist in Polar yet -> no subscription
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "SUBSCRIPTION_REQUIRED",
-        });
-      }
+      await assertActiveSubscription(ctx.orgId);
 
       const voice = await prisma.voice.findUnique({
         where: {

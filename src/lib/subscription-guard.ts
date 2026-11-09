@@ -3,7 +3,7 @@
  *
  * Single subscription check used by every generation router.
  * Checks only the subscription provider selected by the organization's
- * configured country: MTN MoMo, Daraja, or Polar.
+ * saved billing provider: MTN MoMo, Daraja, or Polar.
  *
  * Throws TRPCError FORBIDDEN if neither source has an active subscription.
  *
@@ -20,6 +20,7 @@ import {
   deriveMarket,
   type MarketOrUnresolved,
 } from "@/lib/billing/market";
+import type { Rail } from "@/lib/pricing/quote";
 
 export async function assertActiveSubscription(orgId: string): Promise<void> {
   // ── Dev test bypass ────────────────────────────────────────────────────────
@@ -40,8 +41,17 @@ export async function assertActiveSubscription(orgId: string): Promise<void> {
     org.publicMetadata?.country as string | undefined,
   );
   assertMarketResolved(market, orgId);
+  const configured = org.publicMetadata?.billingProvider;
+  const provider: Rail =
+    configured === "momo" || configured === "mpesa" || configured === "polar"
+      ? configured
+      : market === "ug"
+        ? "momo"
+        : market === "ke"
+          ? "mpesa"
+          : "polar";
 
-  if (market === "ug") {
+  if (provider === "momo") {
     const subscription = await prisma.momoSubscription.findUnique({
       where: { orgId },
       select: { status: true, expiresAt: true },
@@ -52,7 +62,7 @@ export async function assertActiveSubscription(orgId: string): Promise<void> {
     ) {
       return;
     }
-  } else if (market === "ke") {
+  } else if (provider === "mpesa") {
     const subscription = await prisma.mpesaSubscription.findUnique({
       where: { orgId },
       select: { status: true, expiresAt: true },

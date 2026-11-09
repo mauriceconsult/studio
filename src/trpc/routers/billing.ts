@@ -52,6 +52,46 @@ async function getOrgMarket(orgId: string): Promise<MarketOrUnresolved> {
   return deriveMarket(country); // returns "unresolved" when null
 }
 
+type MobilePaymentProvider = "momo" | "mpesa";
+type PaymentProvider = MobilePaymentProvider | "polar";
+
+async function getOrgPaymentProvider(
+  orgId: string,
+): Promise<PaymentProvider> {
+  const client = await clerkClient();
+  const org = await client.organizations.getOrganization({
+    organizationId: orgId,
+  });
+  const configured = org.publicMetadata?.billingProvider;
+  if (
+    configured === "momo" ||
+    configured === "mpesa" ||
+    configured === "polar"
+  ) {
+    return configured;
+  }
+
+  const country = (org.publicMetadata?.country as string) ?? null;
+  const market = deriveMarket(country);
+  assertMarketResolved(market, orgId);
+  if (market === "ug") return "momo";
+  if (market === "ke") return "mpesa";
+  return "polar";
+}
+
+async function assertPaymentProvider(
+  orgId: string,
+  expected: PaymentProvider,
+): Promise<void> {
+  const selected = await getOrgPaymentProvider(orgId);
+  if (selected !== expected) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: `Select ${expected === "momo" ? "MTN Mobile Money" : expected === "mpesa" ? "Safaricom M-Pesa" : "card checkout"} as your billing method first.`,
+    });
+  }
+}
+
 function toTRPC(err: unknown): TRPCError {
   if (err instanceof MarketUnresolvedError) {
     return new TRPCError({
@@ -236,8 +276,29 @@ export const billingRouter = createTRPCRouter({
 
   getMarket: orgProcedure.query(async ({ ctx }) => {
     const market = await getOrgMarket(ctx.orgId);
-    return { market }; // MarketOrUnresolved
+    const paymentProvider = await getOrgPaymentProvider(ctx.orgId);
+    return { market, paymentProvider };
   }),
+
+  setPaymentProvider: orgProcedure
+    .input(z.object({ provider: z.enum(["momo", "mpesa", "polar"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const client = await clerkClient();
+      const org = await client.organizations.getOrganization({
+        organizationId: ctx.orgId,
+      });
+      assertMarketResolved(
+        deriveMarket((org.publicMetadata?.country as string) ?? null),
+        ctx.orgId,
+      );
+      await client.organizations.updateOrganization(ctx.orgId, {
+        publicMetadata: {
+          ...org.publicMetadata,
+          billingProvider: input.provider,
+        },
+      });
+      return { paymentProvider: input.provider };
+    }),
 
   // ── setMarket ──────────────────────────────────────────────────────────────
   // Called from onboarding flow to write country → Clerk org publicMetadata.
@@ -255,15 +316,15 @@ export const billingRouter = createTRPCRouter({
     )
 .mutation(async ({ ctx, input }) => {
   const client = (await clerkClient()) as ClerkClient;
-
-await client.organizations.updateOrganization(
-  ctx.orgId,
-  {
+  const org = await client.organizations.getOrganization({
+    organizationId: ctx.orgId,
+  });
+  await client.organizations.updateOrganization(ctx.orgId, {
     publicMetadata: {
+      ...org.publicMetadata,
       country: input.country,
     },
-  }
-);
+  });
 
   const market = deriveMarket(input.country);
   return { market };
@@ -276,13 +337,15 @@ await client.organizations.updateOrganization(
       const market = await getOrgMarket(ctx.orgId);
       assertMarketResolved(market, ctx.orgId);
 
-      if (market === "ug") {
+      const paymentProvider = await getOrgPaymentProvider(ctx.orgId);
+      if (paymentProvider === "momo") {
         const sub = await prisma.momoSubscription.findFirst({
           where: { orgId: ctx.orgId, status: "active" },
           include: { credits: true },
         });
         return {
-          market: "ug" as const,
+          market,
+          paymentProvider,
           hasActiveSubscription: !!sub && new Date(sub.expiresAt) > new Date(),
           plan: sub?.plan ?? null,
           credits: sub?.credits ?? null,
@@ -291,13 +354,14 @@ await client.organizations.updateOrganization(
         };
       }
 
-      if (market === "ke") {
+      if (paymentProvider === "mpesa") {
         const sub = await prisma.mpesaSubscription.findUnique({
           where: { orgId: ctx.orgId },
           include: { credits: true },
         });
         return {
-          market: "ke" as const,
+          market,
+          paymentProvider,
           hasActiveSubscription:
             !!sub && sub.status === "active" && sub.expiresAt > new Date(),
           plan: sub?.plan ?? null,
@@ -313,7 +377,8 @@ await client.organizations.updateOrganization(
         });
         const activeSubs = (state.activeSubscriptions ?? []) as PolarActiveSub[];
         return {
-          market: "global" as const,
+          market,
+          paymentProvider,
           hasActiveSubscription: activeSubs.length > 0,
           plan: null,
           credits: null,
@@ -322,7 +387,8 @@ await client.organizations.updateOrganization(
         };
       } catch {
         return {
-          market: "global" as const,
+          market,
+          paymentProvider,
           hasActiveSubscription: false,
           plan: null,
           credits: null,
@@ -339,21 +405,7 @@ await client.organizations.updateOrganization(
 
   createCheckout: orgProcedure.mutation(async ({ ctx }) => {
     try {
-      const market = await getOrgMarket(ctx.orgId);
-      assertMarketResolved(market, ctx.orgId);
-
-      if (market === "ug") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Ugandan accounts use MoMo. Use initiateMomoPlan instead.",
-        });
-      }
-      if (market === "ke") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Kenyan accounts use M-Pesa checkout.",
-        });
-      }
+      await assertPaymentProvider(ctx.orgId, "polar");
 
       const result = await polar.checkouts.create({
         products: [env.POLAR_PRODUCT_ID],
@@ -381,7 +433,8 @@ await client.organizations.updateOrganization(
       const market = await getOrgMarket(ctx.orgId);
       assertMarketResolved(market, ctx.orgId);
 
-      if (market !== "global") {
+      const paymentProvider = await getOrgPaymentProvider(ctx.orgId);
+      if (paymentProvider !== "polar") {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Mobile money accounts manage billing in the in-app billing page.",
@@ -416,15 +469,7 @@ await client.organizations.updateOrganization(
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const market = await getOrgMarket(ctx.orgId);
-        assertMarketResolved(market, ctx.orgId);
-
-        if (market !== "ug") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "International accounts use card checkout.",
-          });
-        }
+        await assertPaymentProvider(ctx.orgId, "momo");
 
         const res = await fetch(`${env.PLATFORM_API_URL}/api/momo-pay`, {
           method: "POST",
@@ -454,14 +499,7 @@ await client.organizations.updateOrganization(
   getMomoPaymentStatus: orgProcedure
     .input(z.object({ referenceId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const market = await getOrgMarket(ctx.orgId);
-      assertMarketResolved(market, ctx.orgId);
-      if (market !== "ug") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This payment reference is not for a Ugandan MTN transaction.",
-        });
-      }
+      await assertPaymentProvider(ctx.orgId, "momo");
       return getBillingStatus(input.referenceId);
     }),
 
@@ -478,15 +516,7 @@ await client.organizations.updateOrganization(
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const market = await getOrgMarket(ctx.orgId);
-        assertMarketResolved(market, ctx.orgId);
-
-        if (market !== "ug") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Top-up is for MoMo accounts only.",
-          });
-        }
+        await assertPaymentProvider(ctx.orgId, "momo");
 
         const price = OVERAGE_PRICES[input.meter];
         const unitPrice = price.ugx;
@@ -547,14 +577,7 @@ await client.organizations.updateOrganization(
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const market = await getOrgMarket(ctx.orgId);
-        assertMarketResolved(market, ctx.orgId);
-        if (market !== "ke") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "M-Pesa checkout is available for Kenyan accounts only.",
-          });
-        }
+        await assertPaymentProvider(ctx.orgId, "mpesa");
 
         const phone = normalizeKenyanPhone(input.phone);
         const amountKes = ugxToKes(PLAN_PRICE_UGX[input.plan]);
@@ -618,14 +641,7 @@ await client.organizations.updateOrganization(
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const market = await getOrgMarket(ctx.orgId);
-        assertMarketResolved(market, ctx.orgId);
-        if (market !== "ke") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "M-Pesa top-ups are available for Kenyan accounts only.",
-          });
-        }
+        await assertPaymentProvider(ctx.orgId, "mpesa");
 
         const subscription = await prisma.mpesaSubscription.findUnique({
           where: { orgId: ctx.orgId },
@@ -742,13 +758,11 @@ await client.organizations.updateOrganization(
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const market = await getOrgMarket(ctx.orgId);
-        assertMarketResolved(market, ctx.orgId);
-
         const price = OVERAGE_PRICES[input.event];
         const estimatedCostCents = price.usdCents * input.quantity;
+        const paymentProvider = await getOrgPaymentProvider(ctx.orgId);
 
-        if (market === "global") {
+        if (paymentProvider === "polar") {
           await polar.events.ingest({
             events: [
               {
@@ -765,7 +779,7 @@ await client.organizations.updateOrganization(
         }
 
         const credits =
-          market === "ke"
+          paymentProvider === "mpesa"
             ? await prisma.mpesaCredits.findUnique({
                 where: { orgId: ctx.orgId },
               })
@@ -788,7 +802,7 @@ await client.organizations.updateOrganization(
         const needsTopUp = current < input.quantity;
 
         if (!needsTopUp) {
-          if (market === "ke") {
+          if (paymentProvider === "mpesa") {
             await prisma.mpesaCredits.update({
               where: { orgId: ctx.orgId },
               data: { [field]: { decrement: input.quantity } },

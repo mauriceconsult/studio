@@ -2,11 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 import { parseBuffer } from "music-metadata";
 import { z } from "zod";
 import { polar } from "@/lib/polar";
+import { TRPCError } from "@trpc/server";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/db";
 import { uploadAudio } from "@/lib/r2";
 import { VOICE_CATEGORIES } from "@/features/voices/data/voice-categories";
 import type { VoiceCategory } from "@/generated/prisma/client";
+import { assertActiveSubscription } from "@/lib/subscription-guard";
 
 const createVoiceSchema = z.object({
   name: z.string().min(1, "Voice name is required"),
@@ -25,19 +27,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check for active subscription before voice creation
   try {
-    const customerState = await polar.customers.getStateExternal({
-      externalId: orgId,
-    });
-    const hasActiveSubscription =
-      (customerState.activeSubscriptions ?? []).length > 0;
-    if (!hasActiveSubscription) {
+    await assertActiveSubscription(orgId);
+  } catch (error) {
+    if (error instanceof TRPCError && error.code === "FORBIDDEN") {
       return Response.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 403 });
     }
-  } catch {
-    // Customer doesn't exist in Polar yet -> no subscription
-    return Response.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 403 });
+    console.error("[VOICE_CREATE] Subscription verification failed", error);
+    return Response.json(
+      { error: "Could not verify subscription" },
+      { status: 500 },
+    );
   }
 
   const url = new URL(request.url);

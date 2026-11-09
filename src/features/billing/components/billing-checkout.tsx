@@ -6,6 +6,7 @@ import { useTRPC } from "@/trpc/client";
 import { ugxToKes } from "@/lib/billing/market";
 
 type Plan = "starter" | "pro";
+type PaymentProvider = "momo" | "mpesa" | "polar";
 
 const PLANS: Record<Plan, { name: string; priceUgx: number; description: string }> = {
   starter: {
@@ -28,11 +29,16 @@ export default function BillingCheckout() {
   const trpc = useTRPC();
   const [plan, setPlan] = useState<Plan>("pro");
   const [phone, setPhone] = useState("");
+  const [selectedProvider, setSelectedProvider] =
+    useState<PaymentProvider | null>(null);
   const [mpesaPaymentId, setMpesaPaymentId] = useState<string | null>(null);
   const [momoReferenceId, setMomoReferenceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const marketQuery = useQuery(trpc.billing.getMarket.queryOptions());
+  const setProvider = useMutation(
+    trpc.billing.setPaymentProvider.mutationOptions(),
+  );
   const mpesaCheckout = useMutation(
     trpc.billing.initiateMpesaPlan.mutationOptions(),
   );
@@ -64,9 +70,15 @@ export default function BillingCheckout() {
   );
 
   const market = marketQuery.data?.market;
+  const provider =
+    selectedProvider ?? marketQuery.data?.paymentProvider ?? "polar";
   const planInfo = PLANS[plan];
   const paymentStatus =
-    market === "ke" ? mpesaStatus.data?.status : momoStatus.data?.status;
+    provider === "mpesa"
+      ? mpesaStatus.data?.status
+      : provider === "momo"
+        ? momoStatus.data?.status
+        : undefined;
   const succeeded =
     paymentStatus === "successful" || paymentStatus === "SUCCESSFUL";
   const failed =
@@ -74,20 +86,29 @@ export default function BillingCheckout() {
     paymentStatus === "FAILED" ||
     paymentStatus === "CANCELLED" ||
     paymentStatus === "review";
+  const waitingForMpesa =
+    !!mpesaPaymentId &&
+    (mpesaStatus.data?.status === undefined ||
+      mpesaStatus.data.status === "pending");
+  const waitingForMomo =
+    !!momoReferenceId &&
+    (momoStatus.data?.status === undefined ||
+      momoStatus.data.status === "PENDING");
   const waiting =
-    !!mpesaPaymentId ||
-    !!momoReferenceId ||
+    waitingForMpesa ||
+    waitingForMomo ||
     mpesaCheckout.isPending ||
     momoCheckout.isPending ||
-    createCardCheckout.isPending;
+    createCardCheckout.isPending ||
+    setProvider.isPending;
 
   async function pay() {
     setError(null);
     try {
-      if (market === "ke") {
+      if (provider === "mpesa") {
         const result = await mpesaCheckout.mutateAsync({ plan, phone });
         setMpesaPaymentId(result.paymentId);
-      } else if (market === "ug") {
+      } else if (provider === "momo") {
         const result = await momoCheckout.mutateAsync({ plan, phone });
         setMomoReferenceId(result.referenceId);
       } else {
@@ -96,6 +117,20 @@ export default function BillingCheckout() {
       }
     } catch (paymentError) {
       setError(messageOf(paymentError));
+    }
+  }
+
+  async function chooseProvider(nextProvider: PaymentProvider) {
+    setError(null);
+    setMpesaPaymentId(null);
+    setMomoReferenceId(null);
+    setPhone("");
+    setSelectedProvider(nextProvider);
+    try {
+      await setProvider.mutateAsync({ provider: nextProvider });
+    } catch (providerError) {
+      setSelectedProvider(null);
+      setError(messageOf(providerError));
     }
   }
 
@@ -124,11 +159,11 @@ export default function BillingCheckout() {
   }
 
   const providerName =
-    market === "ke"
+    provider === "mpesa"
       ? "Safaricom M-Pesa"
-      : market === "ug"
+      : provider === "momo"
         ? "MTN Mobile Money"
-        : "Card checkout";
+        : "card checkout";
 
   return (
     <main className="mx-auto max-w-2xl space-y-8 px-4 py-12">
@@ -138,15 +173,44 @@ export default function BillingCheckout() {
         </p>
         <h1 className="text-2xl font-semibold text-gray-900">Choose your plan</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Checkout is routed using your organization’s country. Your payment is processed by {providerName}.
+          Choose a payment method. {providerName} is saved as your organization’s billing default.
         </p>
       </header>
 
-      {market === "global" ? (
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          Continue to Polar to purchase or manage your international subscription.
-        </p>
-      ) : (
+      <fieldset disabled={waiting} className="space-y-2">
+        <legend className="mb-2 text-sm font-medium text-gray-700">
+          Payment method
+        </legend>
+        {(
+          [
+            ["momo", "MTN Mobile Money", "Uganda · UGX"],
+            ["mpesa", "Safaricom M-Pesa", "Kenya · KES"],
+            ["polar", "Card checkout", "International · USD"],
+          ] as const
+        ).map(([value, name, detail]) => (
+          <label
+            key={value}
+            className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-4 ${
+              provider === value ? "border-black shadow-sm" : "border-gray-200"
+            }`}
+          >
+            <input
+              type="radio"
+              name="payment-provider"
+              value={value}
+              checked={provider === value}
+              onChange={() => void chooseProvider(value)}
+              className="accent-black"
+            />
+            <span className="flex-1">
+              <span className="block text-sm font-medium">{name}</span>
+              <span className="block text-xs text-gray-500">{detail}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      {provider !== "polar" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {(Object.entries(PLANS) as [Plan, (typeof PLANS)[Plan]][]).map(([id, item]) => (
             <button
@@ -160,7 +224,7 @@ export default function BillingCheckout() {
             >
               <span className="block text-sm font-medium">{item.name}</span>
               <span className="mt-1 block text-xl font-semibold">
-                {market === "ke"
+                {provider === "mpesa"
                   ? `KES ${ugxToKes(item.priceUgx).toLocaleString()}`
                   : `UGX ${item.priceUgx.toLocaleString()}`}
                 <span className="text-sm font-normal text-gray-400"> / month</span>
@@ -169,20 +233,20 @@ export default function BillingCheckout() {
             </button>
           ))}
         </div>
-      )}
+      ) : null}
 
       {!succeeded && (
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6">
-          {market !== "global" && (
+          {provider !== "polar" && (
             <div className="space-y-1">
               <label className="text-xs text-gray-500" htmlFor="mobile-money-phone">
-                {market === "ke" ? "Safaricom Kenya number" : "MTN Uganda number"}
+                {provider === "mpesa" ? "Safaricom mobile number" : "MTN mobile number"}
               </label>
               <input
                 id="mobile-money-phone"
                 type="tel"
                 autoComplete="tel"
-                placeholder={market === "ke" ? "0712345678 or 254712345678" : "771234567"}
+                placeholder={provider === "mpesa" ? "0712345678 or 254712345678" : "256771234567"}
                 value={phone}
                 onChange={(event) => {
                   setPhone(event.target.value);
@@ -199,14 +263,14 @@ export default function BillingCheckout() {
 
           <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 text-sm">
             <span>
-              {market === "global"
+              {provider === "polar"
                 ? "International subscription"
                 : `${planInfo.name} plan · monthly`}
             </span>
             <strong>
-              {market === "ke"
+              {provider === "mpesa"
                 ? `KES ${ugxToKes(planInfo.priceUgx).toLocaleString()}`
-                : market === "ug"
+                : provider === "momo"
                   ? `UGX ${planInfo.priceUgx.toLocaleString()}`
                   : "Continue to checkout"}
             </strong>
@@ -226,7 +290,7 @@ export default function BillingCheckout() {
             onClick={() => void pay()}
             disabled={
               waiting ||
-              (market !== "global" && phone.trim().length < 9)
+              (provider !== "polar" && phone.trim().length < 9)
             }
             className="w-full rounded-lg bg-black py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -234,9 +298,9 @@ export default function BillingCheckout() {
               ? "Starting payment…"
               : mpesaPaymentId || momoReferenceId
                 ? "Waiting for payment approval…"
-                : market === "ke"
+                : provider === "mpesa"
                   ? `Pay KES ${ugxToKes(planInfo.priceUgx).toLocaleString()}`
-                  : market === "ug"
+                  : provider === "momo"
                     ? `Pay UGX ${planInfo.priceUgx.toLocaleString()}`
                     : "Continue to card checkout"}
           </button>
@@ -254,7 +318,7 @@ export default function BillingCheckout() {
           <p className="text-sm text-gray-500">
             Your {planInfo.name} plan is active.
           </p>
-          {mpesaStatus.data?.receipt && (
+          {provider === "mpesa" && mpesaStatus.data?.receipt && (
             <p className="font-mono text-xs text-gray-400">
               M-Pesa receipt: {mpesaStatus.data.receipt}
             </p>

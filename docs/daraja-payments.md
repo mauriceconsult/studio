@@ -1,9 +1,12 @@
 # Daraja (Safaricom M-Pesa) payments
 
-Kenyan organizations are routed to Daraja using `publicMetadata.country = "KE"`.
-Ugandan organizations continue to use MTN MoMo, and other configured countries
-continue to use Polar. The checkout provider is chosen server-side from the
-organization's country; a client cannot select a different rail.
+The billing page offers MTN Mobile Money, Safaricom M-Pesa, and Polar as
+separate payment choices. The initial selection is suggested from the
+organization's `publicMetadata.country` (`UG` → MTN, `KE` → M-Pesa, otherwise
+Polar), but the organization may choose either mobile-money rail. The choice is
+saved as `publicMetadata.billingProvider`, and server-side billing, subscription
+checks, credits, and pricing use that selected rail. Payment records and credit
+ledgers remain separate between MTN and M-Pesa.
 
 ## Environment
 

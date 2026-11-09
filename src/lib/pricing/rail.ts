@@ -12,6 +12,14 @@ export async function pricingRailForOrg(orgId: string): Promise<Rail> {
   });
   const market = deriveMarket(org.publicMetadata?.country as string | undefined);
   assertMarketResolved(market, orgId);
+  const configured = org.publicMetadata?.billingProvider;
+  if (
+    configured === "momo" ||
+    configured === "mpesa" ||
+    configured === "polar"
+  ) {
+    return configured;
+  }
   if (market === "ke") return "mpesa";
   if (market === "ug") return "momo";
   return "polar";
